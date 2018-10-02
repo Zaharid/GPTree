@@ -1,0 +1,33 @@
+package:
+    name: zkdtree
+    version: "{{ GIT_DESCRIBE_TAG }}.{{ GIT_DESCRIBE_NUMBER }}+{{ GIT_DESCRIBE_HASH }}"
+
+source:
+    git_url: ../
+
+requirements:
+    build:
+        - {{ compiler("cxx") }}
+        - meson
+        - ninja
+        - openblas
+    host:
+        - openblas
+        - python #it refuses to run the test without this
+        - pytest
+    run:
+        - openblas
+
+test:
+    requires:
+        - {{ compiler("cxx") }}
+        - meson
+        - ninja
+        - pytest
+        - cffi
+    source_files:
+        - "*"
+
+about:
+    author: Zahari Kassabov
+    licence: MIT
