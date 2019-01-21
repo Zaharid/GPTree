@@ -69,10 +69,15 @@ TEST_CASE("Test kernel matrix", "[GP]"){
 	REQUIRE(is_close(lower(0,0), 1./8 + 0.01));
 	auto chol = lapack_cholesky_factor(lower);
 	REQUIRE(is_close(lower(0,0), chol(0,0)*chol(0,0) + chol(0,1)*chol(0,1)));
-	auto sol = lapack_cholesky_solve(chol, {5,6});
+	auto y = std::vector<double>{5,6};
+	auto sol = lapack_cholesky_solve(chol, y);
 	REQUIRE(is_close(lower(0,0)*sol[0] + lower(0,1)*sol[1], 5));
 	REQUIRE(is_close(lower(0,1)*sol[0] + lower(1,1)*sol[1], 6));
 
+	auto tree = KDTree(dt, y, 2, 0.1);
+	//Need the lambda because it doesn't fill the default arguments of is_close.
+	REQUIRE(std::equal(sol.begin(), sol.end(), tree.training_pivots.begin(),
+				[](auto x, auto y){return is_close(x, y);}));
 }
 
 TEST_CASE("Test tuple", "[Tuple]"){
@@ -83,7 +88,8 @@ TEST_CASE("Test tuple", "[Tuple]"){
 
 TEST_CASE("Test tree invariants", "[KDTree]"){
     auto dt = Data2D(2,4);
-    auto tree = KDTree(dt);
+	auto y = std::vector<double>{1,3};
+    auto tree = KDTree(dt, y);
     REQUIRE(tree.nsamples() == 2);
     REQUIRE(tree.nfeatures() == 4);
 }
@@ -93,7 +99,8 @@ TEST_CASE("Test min_rdist", "[KDTree]"){
                           ,0,1
                           ,1,0,
                            1,1});
-    auto tree = KDTree(dt);
+	auto y = std::vector<double>(4);
+    auto tree = KDTree(dt, y);
     std::cout << "\n-----------\n";
     for (size_t inode = 0; inode < tree.nnodes(); inode++){
         std::cout << "(" << tree.getNodeBounds().at(0,inode,0) << "-"<< tree.getNodeBounds().at(1,inode,0) << ")";
@@ -112,14 +119,29 @@ TEST_CASE("Test min_rdist", "[KDTree]"){
 }
 
 TEST_CASE("Test tree construction", "[KDTree]"){
-	std::mt19937 g(42);
+	std::mt19937 g(43);
 	std::uniform_real_distribution<double> dist {0,100};
     size_t nsamples = 10833;
 	auto gen = [&dist, &g](){return dist(g);};
     auto points = std::vector<double>(nsamples*3);
 	std::generate(std::begin(points), std::end(points), gen);
     Data2D dt{nsamples, 3, points};
-	KDTree tree {dt};
+	auto y = std::vector<double>{};
+	auto f = [](auto pt){return std::sin(pt[0]/100.*2*pi)*std::cos(pt[1]/200.*2*pi)*exp(-pt[2]/100);};
+	for(size_t i=0; i<nsamples; i++){
+		y.push_back(f(dt.at(i)));
+	}
+	KDTree tree {dt, y, 30, 1e-10};
     REQUIRE(tree.nlevels() == 9);
     std::cout << tree.print_tree();
+	auto pt = std::vector<double>{50, 50, 50};
+	auto val = f(pt);
+	auto interp = tree.interpolate_single(pt);
+	auto interp2 = tree.interpolate_single_bruteforce(pt);
+	std::cout << val << "\n";
+	std::cout << interp << "\n";
+	std::cout << interp2 << "\n";
+
+	REQUIRE(is_close(interp, val, 1e-1));
+
 }
