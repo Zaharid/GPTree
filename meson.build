@@ -1,6 +1,6 @@
-project('kdtree', 'cpp', default_options: ['cpp_std=c++14'])
+project('kdtree', 'cpp', default_options: ['cpp_std=c++17'])
 
-sources = ['tree.hpp']
+sources = ['tree.hpp', ]
 
 lib = shared_library('kdtree',
 sources: sources,

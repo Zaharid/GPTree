@@ -8,15 +8,23 @@
 #include <sstream>
 #include <functional>
 #include <memory>
+#include <assert.h>
+
+#include "gsl/span"
+
 
 namespace ZKDTree {
+
+using point_type = gsl::span<double>;
 
 namespace {
 constexpr auto inf = std::numeric_limits<double>::infinity();
 constexpr auto neg_inf = -inf;
 constexpr double pi = 3.141592653589793238463;
 constexpr double sqrt2 = std::sqrt(2);
+constexpr size_t default_leaf_size = 40;
 }
+
 
 struct NodeData {
   double radius;
@@ -31,34 +39,41 @@ struct Data2D {
   std::vector<double> data;
 
   Data2D(size_t nsamples, size_t nfeatures, std::vector<double> data)
-      : nsamples(nsamples), nfeatures(nfeatures), data(std::move(data)) {}
+      : nsamples(nsamples), nfeatures(nfeatures), data(std::move(data)) {assert(nsamples*nfeatures == this->data.size());}
 
   Data2D(size_t nsamples, size_t nfeatures)
       : nsamples(nsamples), nfeatures(nfeatures), data(nsamples * nfeatures) {}
 
   double & at(size_t i, size_t j) { return data[i * nfeatures + j]; }
 
+  const double & at(size_t i, size_t j) const { return data[i * nfeatures + j]; }
+
+  point_type at(size_t i) {return {&data.data()[i * nfeatures], static_cast<long>(nfeatures)};}
+
   double & operator()(size_t i, size_t j) { return at(i, j); }
 };
 
 struct Data3D {
   size_t kind;
-  size_t nsamples;
+  size_t nnodes;
   size_t nfeatures;
   std::vector<double> data;
 
-  Data3D(size_t kind, size_t nsamples, size_t nfeatures,
+  Data3D(size_t kind, size_t nnodes, size_t nfeatures,
          std::vector<double> data)
-      : kind(kind), nsamples(nsamples), nfeatures(nfeatures), data(data) {}
+      : kind(kind), nnodes(nnodes), nfeatures(nfeatures), data(std::move(data)) {assert(this->data.size() == kind*nnodes*nfeatures);}
 
-  Data3D(size_t kind, size_t nsamples, size_t nfeatures)
-      : kind(kind), nsamples(nsamples), nfeatures(nfeatures),
-        data(nsamples * nfeatures * kind) {}
+  Data3D(size_t kind, size_t nnodes, size_t nfeatures)
+      : kind(kind), nnodes(nnodes), nfeatures(nfeatures),
+        data(nnodes * nfeatures * kind) {}
 
   double & at(size_t k, size_t i, size_t j)  {
-    return data[k * kind * nfeatures + i * nfeatures + j];
+    return data[k * nnodes * nfeatures + i*nfeatures + j];
   }
 
+  double at (size_t k, size_t i, size_t j) const {
+    return data[k * nnodes * nfeatures + i*nfeatures + j];
+  }
   double & operator()(size_t k, size_t i, size_t j) { return at(k, i, j); }
 };
 
@@ -80,23 +95,45 @@ struct DistanceIndex {
   size_t index;
   DistanceIndex(double rdistance, size_t index)
       : rdistance(rdistance), index(index) {}
-  bool operator<(DistanceIndex &other) {
+  bool operator<(DistanceIndex const &other) {
     return this->rdistance < other.rdistance;
   }
 };
 
-double reduced_distance(Data2D &data, size_t i, size_t j) {
+double reduced_distance(Data2D const &data, size_t i, size_t j) {
   double s = 0;
   for (size_t k = 0; k < data.nfeatures; k++) {
-    s += data.at(i, k) * data.at(j, k);
+    auto d = data.at(i, k) - data.at(j, k);
+    s += d*d;
   }
   return s;
 }
 
+double reduced_distance(Data2D const &data, size_t i, Data2D const &otherdata, size_t j){
+  double s = 0;
+  for (size_t k = 0; k < data.nfeatures; k++) {
+    auto d = data.at(i, k) - otherdata.at(j, k);
+    s += d*d;
+  }
+  return s;
+}
+
+double reduced_distance(Data2D const &data, size_t i, point_type const &point){
+  double s = 0;
+  for (size_t k = 0; k < data.nfeatures; k++) {
+    auto d = data.at(i, k) - point.at(k);
+    s += d*d;
+  }
+  return s;
+}
+
+
+
+
 struct KDTree {
   //NOTE: lead_size must go first because it is needed to initialize node_bounds,
   //and the idiotic initializer list feature needs to mind the order.
-  size_t leaf_size = 40;
+  size_t leaf_size = default_leaf_size;
   Data2D data;
   Data3D node_bounds;
   std::vector<NodeData> node_data;
@@ -114,9 +151,9 @@ struct KDTree {
   }
   size_t nnodes() { return (1 << nlevels()) - 1; }
 
-  KDTree(Data2D &datain):data(datain), node_bounds(2, nnodes(), datain.nfeatures) {
-    auto halfbound = nnodes() * nfeatures();
-    auto begin = node_bounds.data.begin();
+  KDTree(Data2D &datain, size_t leaf_size=default_leaf_size):leaf_size(leaf_size), data(datain), node_bounds(2, nnodes(), datain.nfeatures) {
+    auto halfbound = static_cast<long>(nnodes() * nfeatures());
+    auto begin = std::begin(node_bounds.data);
     std::fill(begin, begin + halfbound, inf);
     std::fill(begin + halfbound, begin + 2 * halfbound, neg_inf);
     node_data.assign(nnodes(), NodeData());
@@ -216,6 +253,25 @@ struct KDTree {
       add_info_from_node(s, 0, 0);
       return s.str();
   }
+
+  double min_rdist(size_t inode, const point_type & pt){
+      double rdist = 0;
+      for(size_t j=0; j < nfeatures(); j++){
+          //lo pt hi -> 0 inside for that dimenstion
+          //pt lo hi -> lo - pt
+          //lo hi pt -> pt - hi
+          auto lo = node_bounds(0, inode, j) - pt.at(j);
+          auto hi = pt.at(j) - node_bounds(1, inode, j);
+          auto d = std::max(lo, 0.) + std::max(hi, 0.);
+          rdist += d*d;
+      }
+      return rdist;
+  }
+
+  size_t getLeafSize(){return  leaf_size;}
+  const Data3D& getNodeBounds(){return  node_bounds;}
+
+
 
 
 
