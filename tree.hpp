@@ -25,7 +25,6 @@ constexpr double sqrt2 = std::sqrt(2);
 constexpr size_t default_leaf_size = 40;
 }
 
-
 struct NodeData {
   double radius;
   size_t start;
@@ -52,6 +51,7 @@ struct Data2D {
 
   double & operator()(size_t i, size_t j) { return at(i, j); }
 };
+
 
 struct Data3D {
   size_t kind;
@@ -129,6 +129,54 @@ double reduced_distance(Data2D const &data, size_t i, point_type const &point){
 
 
 
+Data2D rbf_lo_matrix(Data2D const &data, double scale){
+	auto mat = Data2D(data.nsamples, data.nsamples);
+	for(size_t i=0; i < data.nsamples; i++){
+		for (size_t j=0; j<=i; j++){
+			mat(i,j) = std::exp(-reduced_distance(data, i, j))/(2*scale*scale);
+		}
+	}
+	return mat;
+}
+
+void add_noise(Data2D &data, double noise_scale){
+	for (size_t i=0; i < data.nsamples; i++){
+		data.at(i,i) += noise_scale*noise_scale;
+	}
+}
+
+extern "C"
+int dpotrf_(const char* UPLO,
+            const int& N,
+            double* A, const int& LDA,
+            int& info);
+
+extern "C"
+int dpotrs_(const char* UPLO,
+            const int& N, const int& NRHS,
+            const double* A, const int& LDA,
+            double* B, const int& LDB,
+            int& info);
+
+Data2D lapack_cholesky_factor(const Data2D &in){
+	auto n = in.nsamples;
+	auto copy = in.data;
+	auto res = Data2D{n, n, std::move(copy)};
+    int info;
+    dpotrf_("L", n, res.data.data(), n, info);
+	assert(info==0);
+	return res;
+}
+
+std::vector<double> lapack_cholesky_solve(Data2D const &chol, const std::vector<double> & b){
+	auto x = b;
+	auto n = chol.nsamples;
+	int info;
+	dpotrs_("L", n, 1, chol.data.data(), n, x.data(), n, info);
+    assert(info==0);
+	return x;
+}
+
 
 struct KDTree {
   //NOTE: lead_size must go first because it is needed to initialize node_bounds,
@@ -165,6 +213,7 @@ struct KDTree {
     //Build
     recursive_build(0,0,nsamples());
   }
+
   void recursive_build(size_t inode, size_t start, size_t end) {
     auto npoints = end - start;
     auto nmid = npoints / 2;

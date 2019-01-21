@@ -49,6 +49,32 @@ TEST_CASE("Test 3d indexing", "[Data3D]"){
 	REQUIRE(dt(1,1,1)==10);
 }
 
+TEST_CASE("Test kernel matrix", "[GP]"){
+	auto dt = Data2D{2, 3, {1,0,0,
+		                    0,0,1}};
+	auto lower = rbf_lo_matrix(dt, 2);
+	std::cout << lower(0,0) << "\t";
+	std::cout << lower(0,1) << "\n";
+	std::cout << lower(1,0) << "\t";
+	std::cout << lower(1,1) << "\n";
+	REQUIRE(is_close(lower(0,0), 1./8));
+	REQUIRE(is_close(lower(0,1), 0));
+	REQUIRE(is_close(lower(1,1), 1./8));
+	REQUIRE(is_close(lower(1,0), std::exp(-2)/8));
+	add_noise(lower, 0.1);
+	std::cout << lower(0,0) << "\t";
+	std::cout << lower(0,1) << "\n";
+	std::cout << lower(1,0) << "\t";
+	std::cout << lower(1,1) << "\n";
+	REQUIRE(is_close(lower(0,0), 1./8 + 0.01));
+	auto chol = lapack_cholesky_factor(lower);
+	REQUIRE(is_close(lower(0,0), chol(0,0)*chol(0,0) + chol(0,1)*chol(0,1)));
+	auto sol = lapack_cholesky_solve(chol, {5,6});
+	REQUIRE(is_close(lower(0,0)*sol[0] + lower(0,1)*sol[1], 5));
+	REQUIRE(is_close(lower(0,1)*sol[0] + lower(1,1)*sol[1], 6));
+
+}
+
 TEST_CASE("Test tuple", "[Tuple]"){
 	auto dis = std::vector<DistanceIndex>{{0.4, 1},{0.2,2}};
 	std::sort(dis.begin(), dis.end());
