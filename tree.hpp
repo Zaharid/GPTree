@@ -131,7 +131,7 @@ double reduced_distance(Data2D const &data, size_t i, point_type const &point) {
 }
 
 double basic_rbf(double rdist, double scale) {
-  return std::exp(-rdist / (2 * scale * scale));
+  return std::exp(-rdist / (2. * scale * scale));
 }
 
 /** Return a matrix encoded as Data2D where the upper triangle is zero and
@@ -144,8 +144,9 @@ double basic_rbf(double rdist, double scale) {
 Data2D rbf_lo_matrix(Data2D const &data, double scale) {
   auto mat = Data2D(data.nsamples, data.nsamples);
   for (size_t i = 0; i < data.nsamples; i++) {
-    for (size_t j = 0; j <= i; j++) {
-      mat(i, j) = basic_rbf(reduced_distance(data, i, j), scale);
+    for (size_t j = 0; j < data.nsamples; j++) {
+      auto x = basic_rbf(reduced_distance(data, i, j), scale);
+      mat(i, j) = x;
     }
   }
   return mat;
@@ -166,7 +167,11 @@ extern "C" int dpotrs_(const char *UPLO, const int &N, const int &NRHS,
                        const double *A, const int &LDA, double *B,
                        const int &LDB, int &info);
 
+extern "C" void dposv_(char *uplo, int *n, int *nrhs, double *a, int *lda,
+                       double *b, int *ldb, int *info);
 
+extern "C" void dgesv_(int *n, int *nrhs, double *a, int *lda, int *ipiv,
+                       double *b, int *ldb, int *info);
 
 // Probably only need the inplace version below.
 Data2D lapack_cholesky_factor(const Data2D &in) {
@@ -202,8 +207,17 @@ std::vector<double> compute_training_pivots(Data2D const &data,
                                             double noise_scale) {
   auto mat = rbf_lo_matrix(data, rbf_scale);
   add_noise(mat, noise_scale);
-  lapack_cholesky_factor_inplace(mat);
-  auto res = lapack_cholesky_solve(mat, y);
+  int n = mat.nsamples;
+  auto res = y;
+  int one = 1;
+  int info;
+  std::vector<int> throwaway(n);
+  dgesv_(&n, &one, mat.data.data(), &n, throwaway.data(), res.data(), &n,
+         &info);
+  assert(info == 0);
+
+  // lapack_cholesky_factor_inplace(mat);
+  // auto res = lapack_cholesky_solve(mat, y);
 
   return res;
 }
@@ -388,27 +402,62 @@ struct KDTree {
   }
 
   double rbf(double rdist) { return basic_rbf(rdist, rbf_scale); }
+  double weight(size_t data_index, const point_type &pt) {
+    return rbf(reduced_distance(data, data_index, pt));
+  }
 
   double interpolate_single(const point_type &pt) {
     double wsofar = 0;
-    return accumulate_weight(0, pt, wsofar);
+    auto res = accumulate_weight(0, pt, wsofar);
+    // assert(std::all_of(training_pivots.begin(), training_pivots.end(), []
+    // (auto x) {return std::isnan(x);}));
+    return res;
   }
 
   double accumulate_weight(size_t inode, const point_type &pt, double &wsofar) {
-    auto wmin = rbf(min_rdist(inode, pt));
-    auto wmax = rbf(max_rdist(inode, pt));
+    auto wmin = rbf(max_rdist(inode, pt));
+    auto wmax = rbf(min_rdist(inode, pt));
     auto &ndt = node_data[inode];
     auto node_size = ndt.end - ndt.start;
-    if (node_size*(wmax - wmin) <= 2 * search_threshold * (wsofar + node_size * wmin)) {
+    if (node_size * (wmax - wmin) <=
+        2 * search_threshold * (wsofar + node_size * wmin)) {
       wsofar += wmin * node_size;
-      return 0.5 * (wmin + wmax) * ndt.training_sum;
+
+      std::cout << "inode:" << inode << "\n";
+      std::cout << "0.5*(wmin + wmax)[" << 0.5 * (wmin + wmax)
+                << "] * ndt.training_sum[" << ndt.training_sum << "]\n";
+      auto wtest = rbf(reduced_distance(data, indexes[ndt.start], pt));
+      assert(wtest < wmax);
+      assert(wmin < wtest);
+
+      auto wmean = 0.5 * (wmax + wmin);
+      // assert(0);
+      double debugsum = 0;
+      double realsum = 0;
+      for (auto index = ndt.start; index < ndt.end; index++) {
+        auto data_index = indexes[index];
+
+        auto wxx = rbf(reduced_distance(data, data_index, pt));
+        wsofar += wmin;
+        debugsum += wmean * training_pivots[data_index];
+        realsum += wxx * training_pivots[data_index];
+      }
+
+      std::cout << "Realsum:" << realsum << ";\n";
+      std::cout << "Debugsum:" << debugsum << ";\n";
+      // assert(0);
+      return debugsum;
+      // return 0.5 * (wmin + wmax) * ndt.training_sum;
+      // return  debugsum * ndt.training_sum;
     } else {
       if (ndt.is_leaf) {
         double res = 0;
         for (auto index = ndt.start; index < ndt.end; index++) {
-          auto w = rbf(reduced_distance(data, index, pt));
+          auto data_index = indexes[index];
+          auto w = rbf(reduced_distance(data, data_index, pt));
           wsofar += w;
-          res += training_pivots[index] * w;
+          res += training_pivots[data_index] * w;
+          // training_pivots[data_index] = NAN;
         }
         return res;
       } else {
@@ -431,12 +480,12 @@ struct KDTree {
     }
   }
 
-  double interpolate_single_bruteforce(const point_type & pt){
-	  double res = 0;
-	  for (size_t i=0; i<nsamples(); i++){
-		  res += rbf(reduced_distance(data, i, pt))*training_pivots[i];
-	  }
-	  return res;
+  double interpolate_single_bruteforce(const point_type &pt) {
+    double res = 0;
+    for (size_t i = 0; i < nsamples(); i++) {
+      res += rbf(reduced_distance(data, i, pt)) * training_pivots[i];
+    }
+    return res;
   }
 
   size_t getLeafSize() { return leaf_size; }

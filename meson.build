@@ -17,6 +17,10 @@ test_sources = ['run_test.cpp',] + sources
 
 test_exe = executable('run_test', test_sources,
     dependencies: dependencies,
-    build_by_default:false)
+    build_by_default:false,
+)
 
-test('run_test', test_exe)
+test('run_test',
+    test_exe,
+	timeout: 60,
+)
