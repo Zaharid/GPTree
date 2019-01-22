@@ -215,9 +215,9 @@ std::vector<double> compute_training_pivots(Data2D const &data,
   dgesv_(&n, &one, mat.data.data(), &n, throwaway.data(), res.data(), &n,
          &info);
   assert(info == 0);
-
-  // lapack_cholesky_factor_inplace(mat);
-  // auto res = lapack_cholesky_solve(mat, y);
+  */
+  lapack_cholesky_factor_inplace(mat);
+  auto res = lapack_cholesky_solve(mat, y);
 
   return res;
 }
