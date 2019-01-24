@@ -75,9 +75,10 @@ TEST_CASE("Test kernel matrix", "[GP]"){
 	REQUIRE(is_close(lower(0,0)*sol[0] + lower(0,1)*sol[1], 5));
 	REQUIRE(is_close(lower(0,1)*sol[0] + lower(1,1)*sol[1], 6));
 
-	auto tree = KDTree(dt, y, 2, 0.1);
+	//auto tree = KDTree(dt, y, 2, 0.1);
+	auto training_pivots = compute_training_pivots(dt, y, 2., 0.1);
 	//Need the lambda because it doesn't fill the default arguments of is_close.
-	REQUIRE(std::equal(sol.begin(), sol.end(), tree.training_pivots.begin(),
+	REQUIRE(std::equal(sol.begin(), sol.end(), training_pivots.begin(),
 				[](auto x, auto y){return is_close(x, y);}));
 }
 
@@ -222,10 +223,11 @@ TEST_CASE("Test query", "[KDTree]"){
 	}
 	std::nth_element(v.begin(), v.begin()+nele, v.end());
 	std::sort(v.begin(), v.begin()+nele);
-	std::sort(res.begin(), res.end());
+	//std::sort(res.begin(), res.end());
 	for (size_t i=0; i < nele; i++ ){
 		REQUIRE(v[i].rdistance == res[i].rdistance);
-		REQUIRE(v[i].index == res[i].index);
+		// This is not true because we moved around the internal data
+		//REQUIRE(v[i].index == res[i].index);
 	}
 
 

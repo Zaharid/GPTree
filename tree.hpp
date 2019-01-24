@@ -117,6 +117,26 @@ void max_k_heap_push(DistanceIndex element, std::vector<DistanceIndex> &heap,
   }
 }
 
+Data2D apply_permutation(Data2D const & in, std::vector<size_t> const & perm){
+	auto res = Data2D{in.nsamples, in.nfeatures};
+	for (size_t i = 0; i< in.nsamples; i++){
+		auto source_index = perm[i];
+		for(size_t j= 0; j<in.nfeatures; j++){
+			res.at(i,j) = in.at(source_index, j);
+		}
+	}
+	return res;
+}
+
+std::vector<double> apply_permutation(std::vector<double>  const & in, std::vector<size_t> & perm){
+	auto res = std::vector<double>{};
+	res.reserve(in.size());
+	for (size_t i=0; i < in.size(); i++){
+		res.push_back(in[perm[i]]);
+	}
+	return res;
+}
+
 double reduced_distance(Data2D const &data, size_t i, size_t j) {
   double s = 0;
   for (size_t k = 0; k < data.nfeatures; k++) {
@@ -293,6 +313,10 @@ struct KDTree {
 
     // Build tree
     recursive_build(0, 0, nsamples());
+
+	//TODO: Take data by reference and avoid copying.
+	data = apply_permutation(data, indexes);
+	training_pivots = apply_permutation(training_pivots, indexes);;
   }
 
   void recursive_build(size_t inode, size_t start, size_t end) {
@@ -450,7 +474,8 @@ struct KDTree {
       double debugsum = 0;
       double realsum = 0;
       for (auto index = ndt.start; index < ndt.end; index++) {
-        auto data_index = indexes[index];
+        //auto data_index = indexes[index];
+		auto data_index = index;
 
         auto wxx = rbf(reduced_distance(data, data_index, pt));
         wsofar += wmin;
@@ -468,9 +493,9 @@ struct KDTree {
       if (ndt.is_leaf) {
         double res = 0;
         for (auto index = ndt.start; index < ndt.end; index++) {
-          auto data_index = indexes[index];
+          //auto data_index = indexes[index];
+		  auto data_index = index;
           auto w = rbf(reduced_distance(data, data_index, pt));
-          wsofar += w;
           res += training_pivots[data_index] * w;
           // training_pivots[data_index] = NAN;
         }
@@ -518,7 +543,8 @@ struct KDTree {
     auto &ndt = node_data[inode];
     if (ndt.is_leaf) {
       for (size_t idx = ndt.start; idx < ndt.end; idx++) {
-        auto data_index = indexes[idx];
+        //auto data_index = indexes[idx];
+        auto data_index = idx;
         auto rdist = reduced_distance(data, data_index, pt);
         max_k_heap_push({rdist, data_index}, heap, k);
       }
