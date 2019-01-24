@@ -174,4 +174,62 @@ TEST_CASE("Test interpolation", "[KDTree]"){
 	REQUIRE(is_close(interp, val, 1e-1));
 
 }
-*/
+
+TEST_CASE("Test max_k_heap_push", "[max_heap]"){
+	std::vector<DistanceIndex> heap;
+	size_t k = 3;
+	max_k_heap_push({1, 0}, heap, k);
+	REQUIRE(heap.size() == 1);
+	max_k_heap_push({3, 0}, heap, k);
+	REQUIRE(heap.size() == 2);
+	max_k_heap_push({2, 0}, heap, k);
+	REQUIRE(heap.size() == 3);
+	max_k_heap_push({4, 0}, heap, k);
+	REQUIRE(heap.size() == 3);
+	REQUIRE(heap.front().rdistance == 3);
+	max_k_heap_push({-1, 0}, heap, k);
+	REQUIRE(heap.size() == 3);
+	REQUIRE(heap.front().rdistance == 2);
+	std::sort_heap(heap.begin(), heap.end());
+	REQUIRE(heap.front().rdistance == -1);
+
+}
+
+TEST_CASE("Test query", "[KDTree]"){
+	std::mt19937 g(47);
+	std::uniform_real_distribution<double> dist {0,100};
+    size_t nsamples = 1000;
+	auto gen = [&dist, &g](){return dist(g);};
+    auto points = std::vector<double>(nsamples*3);
+	std::generate(std::begin(points), std::end(points), gen);
+    Data2D dt{nsamples, 3, points};
+	auto y = std::vector<double>{};
+	auto f = [](auto pt){return std::sin(pt[0]/100.*2*pi)*std::cos(pt[1]/200.*2*pi)*exp(-pt[2]/100);};
+	for(size_t i=0; i<nsamples; i++){
+		y.push_back(f(dt.at(i)));
+	}
+	KDTree tree {dt, y, 10, 1e-8, 1e-7};
+	auto pt = std::vector<double>{50., 50., 50.};
+	size_t nele = 50;
+	auto res = tree.query(pt, nele);
+	for (auto & it : res){
+		std::cout << it.rdistance << "\n";
+
+	}
+	auto v = std::vector<DistanceIndex>{};
+	for(size_t i=0; i < nsamples; i++){
+		v.emplace_back(reduced_distance(dt, i, pt), i);
+	}
+	std::nth_element(v.begin(), v.begin()+nele, v.end());
+	std::sort(v.begin(), v.begin()+nele);
+	std::sort(res.begin(), res.end());
+	for (size_t i=0; i < nele; i++ ){
+		REQUIRE(v[i].rdistance == res[i].rdistance);
+		REQUIRE(v[i].index == res[i].index);
+	}
+
+
+
+
+
+}

@@ -102,6 +102,21 @@ struct DistanceIndex {
   }
 };
 
+void max_k_heap_push(DistanceIndex element, std::vector<DistanceIndex> &heap,
+                     size_t k) {
+  if (heap.size() < k) {
+    heap.push_back(element);
+    std::push_heap(heap.begin(), heap.end());
+    return;
+  }
+  auto largest = heap.front();
+  if (element < largest) {
+    std::pop_heap(heap.begin(), heap.end());
+    heap.back() = element;
+    std::push_heap(heap.begin(), heap.end());
+  }
+}
+
 double reduced_distance(Data2D const &data, size_t i, size_t j) {
   double s = 0;
   for (size_t k = 0; k < data.nfeatures; k++) {
@@ -486,6 +501,41 @@ struct KDTree {
       res += rbf(reduced_distance(data, i, pt)) * training_pivots[i];
     }
     return res;
+  }
+
+  std::vector<DistanceIndex> query(const point_type &pt, size_t k) {
+    auto heap = std::vector<DistanceIndex>{};
+    query_single_depthfirst(pt, k, 0, 0., heap);
+    return heap;
+  }
+
+  void query_single_depthfirst(const point_type &pt, size_t k, size_t inode,
+                               double minrdist,
+                               std::vector<DistanceIndex> &heap) {
+    if (!heap.empty() && minrdist > heap.front().rdistance) {
+      return;
+    }
+    auto &ndt = node_data[inode];
+    if (ndt.is_leaf) {
+      for (size_t idx = ndt.start; idx < ndt.end; idx++) {
+        auto data_index = indexes[idx];
+        auto rdist = reduced_distance(data, data_index, pt);
+        max_k_heap_push({rdist, data_index}, heap, k);
+      }
+
+    } else {
+      auto child1 = 2 * inode + 1;
+      auto child2 = 2 * inode + 2;
+      auto d1 = min_rdist(child1, pt);
+      auto d2 = min_rdist(child2, pt);
+      if (d1 <= d2) {
+        query_single_depthfirst(pt, k, child1, d1, heap);
+        query_single_depthfirst(pt, k, child2, d2, heap);
+      } else {
+        query_single_depthfirst(pt, k, child2, d2, heap);
+        query_single_depthfirst(pt, k, child1, d1, heap);
+      }
+    }
   }
 
   size_t getLeafSize() { return leaf_size; }
