@@ -270,7 +270,6 @@ struct KDTree {
   // These are the values obtained by fitting the gp.
   std::vector<double> training_pivots;
   std::vector<NodeData> node_data;
-  std::vector<size_t> indexes;
   // Kernel and noise parameters. Maybe abstract away.
   double rbf_scale;
   double noise_scale;
@@ -297,6 +296,7 @@ struct KDTree {
 
     assert(y.size() == data.nsamples);
 
+
     // Train
     training_pivots = compute_training_pivots(data, y, rbf_scale, noise_scale);
 
@@ -308,38 +308,38 @@ struct KDTree {
     node_data.assign(nnodes(), NodeData());
 
     // Fill indexes
-    indexes = std::vector<size_t>(nsamples());
+    auto indexes = std::vector<size_t>(nsamples());
     std::iota(indexes.begin(), indexes.end(), 0);
 
     // Build tree
-    recursive_build(0, 0, nsamples());
+    recursive_build(indexes, 0, 0, nsamples());
 
 	//TODO: Take data by reference and avoid copying.
 	data = apply_permutation(data, indexes);
 	training_pivots = apply_permutation(training_pivots, indexes);;
   }
 
-  void recursive_build(size_t inode, size_t start, size_t end) {
+  void recursive_build(std::vector<size_t> &indexes, size_t inode, size_t start, size_t end) {
     auto npoints = end - start;
     auto nmid = npoints / 2;
-    init_node(inode, start, end);
+    init_node(indexes, inode, start, end);
     if (2 * inode + 1 >= nnodes()) {
       node_data[inode].is_leaf = true;
     } else {
       node_data[inode].is_leaf = false;
-      auto i_max = find_node_split_dim(start, end);
+      auto i_max = find_node_split_dim(indexes, start, end);
       IndexComparator comp{data, i_max};
       std::nth_element(&indexes[start], &indexes[start + nmid], &indexes[end],
                        comp);
-      recursive_build(2 * inode + 1, start, start + nmid);
-      recursive_build(2 * inode + 2, start + nmid, end);
+      recursive_build(indexes, 2 * inode + 1, start, start + nmid);
+      recursive_build(indexes, 2 * inode + 2, start + nmid, end);
     }
   }
 
   /** Because there is no easy way of slicing an std::vector, we take a a pair
    * of indices. This is no worse than a pair of iterators and hides the ugly
    * types.**/
-  size_t find_node_split_dim(size_t start_id, size_t end_id) {
+  size_t find_node_split_dim(std::vector<size_t> & indexes, size_t start_id, size_t end_id) {
 
     double maxdelta = neg_inf;
     size_t max_split_dim = 0;

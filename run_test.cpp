@@ -110,9 +110,6 @@ TEST_CASE("Test min_rdist", "[KDTree]"){
         std::cout << "\n";
     }
     std::cout << "Indexes:\n";
-    for (auto i : tree.indexes){
-        std::cout << i << "\n";
-    }
     std::cout << tree.print_tree();
     std::cout << "\n----\n";
     double pt[] = {0.25,0.25};
