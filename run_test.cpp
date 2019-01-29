@@ -1,3 +1,8 @@
+#include "tree.hpp"
+
+#include <cereal/archives/portable_binary.hpp>
+#include <cereal/types/vector.hpp>
+
 #include <iostream>
 #include <memory>
 #include <vector>
@@ -6,7 +11,6 @@
 #include <functional>
 #include <cmath>
 
-#include "tree.hpp"
 
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
@@ -142,6 +146,24 @@ TEST_CASE("Test tree construction", "[KDTree]"){
 	std::cout << interp2 << "\n";
 
 	REQUIRE(is_close(interp, val, 1e-1));
+	{
+	std::ofstream os ("tree.cereal", std::ios::binary);
+	cereal::PortableBinaryOutputArchive ar(os);
+	ar(tree);
+	}
+	{
+		std::ifstream is("tree.cereal", std::ios::binary);
+		cereal::PortableBinaryInputArchive ar(is);
+		KDTree loaded_tree;
+		ar(loaded_tree);
+		auto newinterp = loaded_tree.interpolate_single_bruteforce(pt);
+		REQUIRE(interp2 == newinterp);
+		auto nis = loaded_tree.interpolate_single(pt);
+		REQUIRE(interp == nis);
+	}
+
+
+
 
 }
 

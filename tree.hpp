@@ -1,4 +1,9 @@
 #pragma once
+
+#include <cereal/archives/portable_binary.hpp>
+#include <cereal/types/memory.hpp>
+#include <cereal/types/vector.hpp>
+
 #include <algorithm>
 #include <assert.h>
 #include <cmath>
@@ -30,6 +35,15 @@ struct NodeData {
   size_t start;
   size_t end;
   bool is_leaf;
+  /*
+  NodeData(double radius, double training_sum, double training_min,
+           double training_max, size_t start, size_t end, bool is_leaf)
+      : radius(radius), training_sum(training_sum), training_min(training_min),
+        training_max(training_max), start(start), end(end), is_leaf(is_leaf) {}
+  */
+  template <class Archive> void serialize(Archive &ar)  {
+    ar(radius, training_sum, training_min, training_max, start, end, is_leaf);
+  }
 };
 
 struct Data2D {
@@ -45,6 +59,9 @@ struct Data2D {
   Data2D(size_t nsamples, size_t nfeatures)
       : nsamples(nsamples), nfeatures(nfeatures), data(nsamples * nfeatures) {}
 
+  //For serialization
+  Data2D(){}
+
   double &at(size_t i, size_t j) { return data[i * nfeatures + j]; }
 
   const double &at(size_t i, size_t j) const { return data[i * nfeatures + j]; }
@@ -54,6 +71,10 @@ struct Data2D {
   }
 
   double &operator()(size_t i, size_t j) { return at(i, j); }
+
+  template <class Archive> void serialize(Archive &ar)  {
+    ar(nsamples, nfeatures, data);
+  }
 };
 
 struct Data3D {
@@ -72,14 +93,22 @@ struct Data3D {
       : kind(kind), nnodes(nnodes), nfeatures(nfeatures),
         data(nnodes * nfeatures * kind) {}
 
+  //For serialization
+  Data3D(){}
+
   double &at(size_t k, size_t i, size_t j) {
     return data[k * nnodes * nfeatures + i * nfeatures + j];
   }
+
 
   double at(size_t k, size_t i, size_t j) const {
     return data[k * nnodes * nfeatures + i * nfeatures + j];
   }
   double &operator()(size_t k, size_t i, size_t j) { return at(k, i, j); }
+
+  template <class Archive> void serialize(Archive &ar)  {
+    ar(kind, nnodes, nfeatures, data);
+  }
 };
 
 struct IndexComparator {
@@ -286,6 +315,9 @@ struct KDTree {
     }
   }
   size_t nnodes() { return (1 << nlevels()) - 1; }
+
+  //For serialization
+  KDTree(){}
 
   KDTree(Data2D datain, std::vector<double> const &y, double rbf_scale = 0.1,
          double noise_scale = 1e-7, double search_threshold = 1e-5,
@@ -566,6 +598,11 @@ struct KDTree {
 
   size_t getLeafSize() { return leaf_size; }
   const Data3D &getNodeBounds() { return node_bounds; }
+
+  template <class Archive> void serialize(Archive &ar)  {
+    ar(leaf_size, data, node_bounds, training_pivots, node_data, rbf_scale,
+       noise_scale, search_threshold);
+  }
 };
 
 } // namespace ZKDTree
