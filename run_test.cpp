@@ -144,7 +144,7 @@ TEST_CASE("Test tree construction", "[KDTree]"){
 	KDTree tree {dt, y, 10, 1e-10, 1e-10};
     REQUIRE(tree.nlevels() == 9);
     std::cout << tree.print_tree();
-	auto pt = std::vector<double>{25, 25, 25};
+	auto pt = std::vector<double>{10, 10, 25};
 	auto val = f(pt);
 	auto interp2 = tree.interpolate_single_bruteforce(pt);
 	auto interp = tree.interpolate_single(pt);
@@ -174,9 +174,8 @@ TEST_CASE("Test tree construction", "[KDTree]"){
 
 }
 
-/*
 TEST_CASE("Test interpolation", "[KDTree]"){
-	std::mt19937 g(43);
+	std::mt19937 g(44);
 	std::uniform_real_distribution<double> dist {0,100};
     size_t nsamples = 1000;
 	auto gen = [&dist, &g](){return dist(g);};
@@ -188,7 +187,7 @@ TEST_CASE("Test interpolation", "[KDTree]"){
 	for(size_t i=0; i<nsamples; i++){
 		y.push_back(f(dt.at(i)));
 	}
-	KDTree tree {dt, y, 3, 1e-10, 1e-2};
+	KDTree tree {dt, y, 10, 1e-8, 1e-7};
     std::cout << tree.print_tree();
 	auto pt = std::vector<double>{25, 25, 25};
 	auto val = f(pt);

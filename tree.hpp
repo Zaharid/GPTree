@@ -282,9 +282,8 @@ std::vector<double> compute_training_pivots(Data2D const &data,
   dgesv_(&n, &one, mat.data.data(), &n, throwaway.data(), res.data(), &n,
          &info);
   assert(info == 0);
-  */
-  lapack_cholesky_factor_inplace(mat);
-  auto res = lapack_cholesky_solve(mat, y);
+  // lapack_cholesky_factor_inplace(mat);
+  // auto res = lapack_cholesky_solve(mat, y);
 
   return res;
 }
@@ -331,7 +330,6 @@ struct KDTree {
 
     assert(y.size() == data.nsamples);
 
-
     // Train
     training_pivots = compute_training_pivots(data, y, rbf_scale, noise_scale);
 
@@ -352,9 +350,11 @@ struct KDTree {
     // TODO: Take data by reference and avoid copying.
     data = apply_permutation(data, indexes);
     training_pivots = apply_permutation(training_pivots, indexes);
+    ;
   }
 
-  void recursive_build(std::vector<size_t> &indexes, size_t inode, size_t start, size_t end) {
+  void recursive_build(std::vector<size_t> &indexes, size_t inode, size_t start,
+                       size_t end) {
     auto npoints = end - start;
     auto nmid = npoints / 2;
     init_node(indexes, inode, start, end);
@@ -374,7 +374,8 @@ struct KDTree {
   /** Because there is no easy way of slicing an std::vector, we take a a pair
    * of indices. This is no worse than a pair of iterators and hides the ugly
    * types.**/
-  size_t find_node_split_dim(std::vector<size_t> & indexes, size_t start_id, size_t end_id) {
+  size_t find_node_split_dim(std::vector<size_t> &indexes, size_t start_id,
+                             size_t end_id) {
 
     double maxdelta = neg_inf;
     size_t max_split_dim = 0;
@@ -488,9 +489,6 @@ struct KDTree {
   }
 
   double rbf(double rdist) { return basic_rbf(rdist, rbf_scale); }
-  double weight(size_t data_index, const point_type &pt) {
-    return rbf(reduced_distance(data, data_index, pt));
-  }
 
   double interpolate_single(const point_type &pt) {
     double wsofar = 0;
@@ -595,7 +593,7 @@ struct KDTree {
     auto &ndt = node_data[inode];
     if (ndt.is_leaf) {
       for (size_t idx = ndt.start; idx < ndt.end; idx++) {
-        //auto data_index = indexes[idx];
+        // auto data_index = indexes[idx];
         auto data_index = idx;
         auto rdist = reduced_distance(data, data_index, pt);
         max_k_heap_push({rdist, data_index}, heap, k);
