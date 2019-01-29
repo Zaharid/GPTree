@@ -146,24 +146,25 @@ void max_k_heap_push(DistanceIndex element, std::vector<DistanceIndex> &heap,
   }
 }
 
-Data2D apply_permutation(Data2D const & in, std::vector<size_t> const & perm){
-	auto res = Data2D{in.nsamples, in.nfeatures};
-	for (size_t i = 0; i< in.nsamples; i++){
-		auto source_index = perm[i];
-		for(size_t j= 0; j<in.nfeatures; j++){
-			res.at(i,j) = in.at(source_index, j);
-		}
-	}
-	return res;
+Data2D apply_permutation(Data2D const &in, std::vector<size_t> const &perm) {
+  auto res = Data2D{in.nsamples, in.nfeatures};
+  for (size_t i = 0; i < in.nsamples; i++) {
+    auto source_index = perm[i];
+    for (size_t j = 0; j < in.nfeatures; j++) {
+      res.at(i, j) = in.at(source_index, j);
+    }
+  }
+  return res;
 }
 
-std::vector<double> apply_permutation(std::vector<double>  const & in, std::vector<size_t> & perm){
-	auto res = std::vector<double>{};
-	res.reserve(in.size());
-	for (size_t i=0; i < in.size(); i++){
-		res.push_back(in[perm[i]]);
-	}
-	return res;
+std::vector<double> apply_permutation(std::vector<double> const &in,
+                                      std::vector<size_t> &perm) {
+  auto res = std::vector<double>{};
+  res.reserve(in.size());
+  for (size_t i = 0; i < in.size(); i++) {
+    res.push_back(in[perm[i]]);
+  }
+  return res;
 }
 
 double reduced_distance(Data2D const &data, size_t i, size_t j) {
@@ -346,9 +347,9 @@ struct KDTree {
     // Build tree
     recursive_build(indexes, 0, 0, nsamples());
 
-	//TODO: Take data by reference and avoid copying.
-	data = apply_permutation(data, indexes);
-	training_pivots = apply_permutation(training_pivots, indexes);;
+    // TODO: Take data by reference and avoid copying.
+    data = apply_permutation(data, indexes);
+    training_pivots = apply_permutation(training_pivots, indexes);
   }
 
   void recursive_build(std::vector<size_t> &indexes, size_t inode, size_t start, size_t end) {

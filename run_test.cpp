@@ -92,6 +92,13 @@ TEST_CASE("Test tuple", "[Tuple]"){
 	REQUIRE(dis.front().index==2);
 }
 
+TEST_CASE("Test apply permutation", "[Permutation]"){
+	auto v = std::vector<double>{0,1,2,3,4,5};
+	auto indexes = std::vector<size_t>{4,0,3,2,4,1};
+	auto res = apply_permutation(v, indexes);
+	REQUIRE(std::equal(res.begin(), res.end(), indexes.begin(), indexes.end()));
+}
+
 TEST_CASE("Test tree invariants", "[KDTree]"){
     auto dt = Data2D(2,4);
 	auto y = std::vector<double>{1,3};
