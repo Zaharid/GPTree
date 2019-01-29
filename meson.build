@@ -13,6 +13,14 @@ lib = shared_library('kdtree',
 	install: true,
 )
 
+
+clib = shared_library('capi',
+	sources: ['capi.cpp'],
+	dependencies: dependencies,
+	install_dir: 'lib/',
+	install: true,
+)
+
 test_sources = ['run_test.cpp',] + sources
 
 test_exe = executable('run_test', test_sources,
