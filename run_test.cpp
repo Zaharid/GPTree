@@ -1,8 +1,5 @@
 #include "tree.hpp"
 
-#include <cereal/archives/portable_binary.hpp>
-#include <cereal/types/vector.hpp>
-
 #include <iostream>
 #include <memory>
 #include <vector>
@@ -128,52 +125,41 @@ TEST_CASE("Test min_rdist", "[KDTree]"){
 
 }
 
-TEST_CASE("Test tree construction", "[KDTree]"){
-	std::mt19937 g(43);
-	std::uniform_real_distribution<double> dist {0,100};
-    size_t nsamples = 10833;
-	auto gen = [&dist, &g](){return dist(g);};
-    auto points = std::vector<double>(nsamples*3);
-	std::generate(std::begin(points), std::end(points), gen);
-    Data2D dt{nsamples, 3, points};
-	auto y = std::vector<double>{};
-	auto f = [](auto pt){return std::sin(pt[0]/100.*2*pi)*std::cos(pt[1]/200.*2*pi)*exp(-pt[2]/100);};
-	for(size_t i=0; i<nsamples; i++){
-		y.push_back(f(dt.at(i)));
-	}
-	KDTree tree {dt, y, 10, 1e-10, 1e-10};
-    REQUIRE(tree.nlevels() == 9);
-    std::cout << tree.print_tree();
-	auto pt = std::vector<double>{10, 10, 25};
-	auto val = f(pt);
-	auto interp2 = tree.interpolate_single_bruteforce(pt);
-	auto interp = tree.interpolate_single(pt);
-	std::cout << val << "\n";
-	std::cout << interp << "\n";
-	std::cout << interp2 << "\n";
+TEST_CASE("Test tree construction", "[KDTree]") {
+  std::mt19937 g(43);
+  std::uniform_real_distribution<double> dist{0, 100};
+  size_t nsamples = 10833;
+  auto gen = [&dist, &g]() { return dist(g); };
+  auto points = std::vector<double>(nsamples * 3);
+  std::generate(std::begin(points), std::end(points), gen);
+  Data2D dt{nsamples, 3, points};
+  auto y = std::vector<double>{};
+  auto f = [](auto pt) {
+    return std::sin(pt[0] / 100. * 2 * pi) * std::cos(pt[1] / 200. * 2 * pi) *
+           exp(-pt[2] / 100);
+  };
+  for (size_t i = 0; i < nsamples; i++) {
+    y.push_back(f(dt.at(i)));
+  }
+  KDTree tree{dt, y, 10, 1e-10, 1e-10};
+  REQUIRE(tree.nlevels() == 9);
+  std::cout << tree.print_tree();
+  auto pt = std::vector<double>{10, 10, 25};
+  auto val = f(pt);
+  auto interp2 = tree.interpolate_single_bruteforce(pt);
+  auto interp = tree.interpolate_single(pt);
+  std::cout << val << "\n";
+  std::cout << interp << "\n";
+  std::cout << interp2 << "\n";
 
-	REQUIRE(is_close(interp, val, 1e-1));
-	{
-	std::ofstream os ("tree.cereal", std::ios::binary);
-	cereal::PortableBinaryOutputArchive ar(os);
-	ar(tree);
-	}
-	{
-		std::ifstream is("tree.cereal", std::ios::binary);
-		cereal::PortableBinaryInputArchive ar(is);
-		KDTree loaded_tree;
-		ar(loaded_tree);
-		auto newinterp = loaded_tree.interpolate_single_bruteforce(pt);
-		REQUIRE(interp2 == newinterp);
-		auto nis = loaded_tree.interpolate_single(pt);
-		REQUIRE(interp == nis);
-	}
-
-
-
-
+  REQUIRE(is_close(interp, val, 1e-1));
+  save_tree(tree, "tree.cereal");
+  auto loaded_tree = load_tree("tree.cereal");
+  auto newinterp = loaded_tree.interpolate_single_bruteforce(pt);
+  REQUIRE(interp2 == newinterp);
+  auto nis = loaded_tree.interpolate_single(pt);
+  REQUIRE(interp == nis);
 }
-
 TEST_CASE("Test interpolation", "[KDTree]"){
 	std::mt19937 g(44);
 	std::uniform_real_distribution<double> dist {0,100};

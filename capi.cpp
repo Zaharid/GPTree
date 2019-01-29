@@ -1,21 +1,8 @@
 #include "capi.h"
 #include "tree.hpp"
 
-
-#include <cereal/archives/portable_binary.hpp>
-#include <cereal/types/memory.hpp>
-#include <cereal/types/vector.hpp>
-
-#include <fstream>
-#include <memory>
-
 zkdtree * zkdtree_load(const char * filename){
-	//The unqie_ptr is required by cereal
-	auto *t = new ZKDTree::KDTree();
-	std::ifstream is(filename, std::ios::binary);
-	cereal::PortableBinaryInputArchive ar(is);
-	//ar(t);
-	ar(*t);
+	auto *t = new ZKDTree::KDTree(ZKDTree::load_tree(filename));
 	return reinterpret_cast<zkdtree*>(t);
 }
 

@@ -8,12 +8,14 @@
 #include <assert.h>
 #include <cmath>
 #include <functional>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <numeric>
 #include <sstream>
 #include <string>
 #include <vector>
+
 
 #include "gsl/span"
 
@@ -37,12 +39,7 @@ struct NodeData {
   size_t start;
   size_t end;
   bool is_leaf;
-  /*
-  NodeData(double radius, double training_sum, double training_min,
-           double training_max, size_t start, size_t end, bool is_leaf)
-      : radius(radius), training_sum(training_sum), training_min(training_min),
-        training_max(training_max), start(start), end(end), is_leaf(is_leaf) {}
-  */
+
   template <class Archive> void serialize(Archive &ar)  {
     ar(radius, training_sum, training_min, training_max, start, end, is_leaf);
   }
@@ -623,5 +620,21 @@ struct KDTree {
        noise_scale, search_threshold);
   }
 };
+
+KDTree load_tree(const char *filename) {
+  auto res = KDTree();
+  std::ifstream is(filename, std::ios::binary);
+  cereal::PortableBinaryInputArchive ar(is);
+  ar(res);
+  return res;
+}
+
+void save_tree(KDTree &tree, const char *filename) {
+  std::ofstream os(filename, std::ios::binary);
+  cereal::PortableBinaryOutputArchive ar(os);
+  ar(tree);
+}
+
+
 
 } // namespace ZKDTree
