@@ -32,6 +32,8 @@ constexpr size_t default_leaf_size = 40;
 struct NodeData {
   double radius;
   double training_sum;
+  double training_min;
+  double training_max;
   size_t start;
   size_t end;
   bool is_leaf;
@@ -399,11 +401,21 @@ struct KDTree {
     return max_split_dim;
   }
 
-  void init_node(size_t inode, size_t idx_start, size_t idx_end) {
+  void init_node(std::vector<size_t> &indexes, size_t inode, size_t idx_start,
+                 size_t idx_end) {
     double training_sum = 0;
+    double min_pivot = inf;
+    double max_pivot = neg_inf;
     for (auto i = idx_start; i < idx_end; i++) {
       auto data_index = indexes[i];
-      training_sum += training_pivots[data_index];
+      auto pivot = training_pivots[data_index];
+      training_sum += pivot;
+      if (pivot > max_pivot) {
+        max_pivot = pivot;
+      }
+      if (pivot < min_pivot) {
+        min_pivot = pivot;
+      }
       for (size_t j = 0; j < nfeatures(); j++) {
         auto data_val = data.at(data_index, j);
         auto &lowbound = node_bounds.at(0, inode, j);
@@ -420,6 +432,8 @@ struct KDTree {
     rad = std::sqrt(rad);
     node_data[inode].radius = rad;
     node_data[inode].training_sum = training_sum;
+    node_data[inode].training_min = min_pivot;
+    node_data[inode].training_max = max_pivot;
     node_data[inode].start = idx_start;
     node_data[inode].end = idx_end;
   }
@@ -491,45 +505,50 @@ struct KDTree {
     auto wmax = rbf(min_rdist(inode, pt));
     auto &ndt = node_data[inode];
     auto node_size = ndt.end - ndt.start;
-    if (node_size * (wmax - wmin) <=
-        2 * search_threshold * (wsofar + node_size * wmin)) {
-      wsofar += wmin * node_size;
+    auto error_estimate =
+        node_size * (wmax * ndt.training_max - wmin * ndt.training_min);
+    auto wmean = 0.5 * (wmax + wmin);
+    auto contribution_estimate = wmean * ndt.training_sum;
+
+    if (error_estimate <
+        search_threshold * std::abs(wsofar + contribution_estimate)) {
+      wsofar += contribution_estimate;
 
       std::cout << "inode:" << inode << "\n";
       std::cout << "0.5*(wmin + wmax)[" << 0.5 * (wmin + wmax)
                 << "] * ndt.training_sum[" << ndt.training_sum << "]\n";
-      auto wtest = rbf(reduced_distance(data, indexes[ndt.start], pt));
+      // auto wtest = rbf(reduced_distance(data, indexes[ndt.start], pt));
+      auto wtest = rbf(reduced_distance(data, ndt.start, pt));
       assert(wtest < wmax);
       assert(wmin < wtest);
 
-      auto wmean = 0.5 * (wmax + wmin);
       // assert(0);
-      double debugsum = 0;
+
       double realsum = 0;
       for (auto index = ndt.start; index < ndt.end; index++) {
-        //auto data_index = indexes[index];
-		auto data_index = index;
+        // auto data_index = indexes[index];
+        auto data_index = index;
 
         auto wxx = rbf(reduced_distance(data, data_index, pt));
         wsofar += wmin;
-        debugsum += wmean * training_pivots[data_index];
         realsum += wxx * training_pivots[data_index];
       }
 
       std::cout << "Realsum:" << realsum << ";\n";
-      std::cout << "Debugsum:" << debugsum << ";\n";
+      std::cout << "Debugsum:" << contribution_estimate << ";\n";
       // assert(0);
-      return debugsum;
+      return contribution_estimate;
       // return 0.5 * (wmin + wmax) * ndt.training_sum;
       // return  debugsum * ndt.training_sum;
     } else {
       if (ndt.is_leaf) {
         double res = 0;
         for (auto index = ndt.start; index < ndt.end; index++) {
-          //auto data_index = indexes[index];
-		  auto data_index = index;
+          // auto data_index = indexes[index];
+          auto data_index = index;
           auto w = rbf(reduced_distance(data, data_index, pt));
           res += training_pivots[data_index] * w;
+          wsofar += res;
           // training_pivots[data_index] = NAN;
         }
         return res;
