@@ -13,13 +13,18 @@ lib = shared_library('kdtree',
 	install: true,
 )
 
+cinc = include_directories('include')
+install_headers(['include/capi.h'], subdir: 'zkdtree')
+
 
 clib = shared_library('capi',
 	sources: ['capi.cpp'],
 	dependencies: dependencies,
+	include_directories: cinc,
 	install_dir: 'lib/',
 	install: true,
 )
+
 
 test_sources = ['run_test.cpp',] + sources
 
