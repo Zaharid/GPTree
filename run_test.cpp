@@ -248,7 +248,7 @@ TEST_CASE("Test query", "[KDTree]"){
 	}
 	std::nth_element(v.begin(), v.begin()+nele, v.end());
 	std::sort(v.begin(), v.begin()+nele);
-	//std::sort(res.begin(), res.end());
+	std::sort_heap(res.begin(), res.end());
 	for (size_t i=0; i < nele; i++ ){
 		REQUIRE(v[i].rdistance == res[i].rdistance);
 		// This is not true because we moved around the internal data

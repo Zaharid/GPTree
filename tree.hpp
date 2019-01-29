@@ -581,6 +581,7 @@ struct KDTree {
   std::vector<DistanceIndex> query(const point_type &pt, size_t k) {
     auto heap = std::vector<DistanceIndex>{};
     query_single_depthfirst(pt, k, 0, 0., heap);
+    // std::sort_heap(heap.begin(), heap.end());
     return heap;
   }
 
