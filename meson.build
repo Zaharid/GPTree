@@ -37,6 +37,12 @@ test_exe = executable('run_test', test_sources,
     build_by_default:false,
 )
 
+build_exe = executable('zkdtree-build', 'zkdtree_build.cpp',
+    include_directories: vendor_includes,
+	dependencies: dependencies,
+	install: true,
+)
+
 test('run_test',
     test_exe,
 	timeout: 60,
