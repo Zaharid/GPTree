@@ -241,8 +241,22 @@ TEST_CASE("Test query", "[KDTree]"){
 		//REQUIRE(v[i].index == res[i].index);
 	}
 
+	auto empty = tree.query_low_partition(0, 10);
+	REQUIRE(empty.empty());
 
-
-
-
+    size_t target_index = 50;
+	size_t k = 10;
+	auto lp = tree.query_low_partition(target_index, k);
+	std::sort_heap(lp.begin(), lp.end());
+	auto vl = std::vector<DistanceIndex>{};
+	const auto & internal_data = tree.data;
+	for(size_t i=0; i < target_index; i++){
+		vl.emplace_back(reduced_distance(internal_data, i, target_index), i);
+	}
+	std::nth_element(vl.begin(), vl.begin()+k, vl.end());
+	std::sort(vl.begin(), vl.begin() + k);
+	for(size_t i=0; i<k; i++){
+		REQUIRE(vl[i].rdistance == lp[i].rdistance);
+		REQUIRE(vl[i].index == lp[i].index);
+	}
 }

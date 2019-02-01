@@ -607,6 +607,46 @@ struct KDTree {
     }
   }
 
+  std::vector<DistanceIndex> query_low_partition(size_t index, size_t k) {
+    auto heap = std::vector<DistanceIndex>();
+    query_single_low_partition(index, k, 0, 0., heap);
+    return heap;
+  }
+
+  void query_single_low_partition(size_t index, size_t k, size_t inode,
+                                  double minrdist,
+                                  std::vector<DistanceIndex> &heap) {
+    if (!heap.empty() && minrdist > heap.front().rdistance) {
+      return;
+    }
+    auto &ndt = node_data[inode];
+    // We know that all the children are going to
+    // be to the right of index.
+    if (ndt.start > index) {
+      return;
+    }
+    if (ndt.is_leaf) {
+      for (size_t other_id = ndt.start; other_id < std::min(index, ndt.end);
+           other_id++) {
+        auto rdist = reduced_distance(data, index, other_id);
+        max_k_heap_push({rdist, other_id}, heap, k);
+      }
+
+    } else {
+      auto child1 = 2 * inode + 1;
+      auto child2 = 2 * inode + 2;
+      auto d1 = min_rdist(inode, data.at(index));
+      auto d2 = min_rdist(inode, data.at(index));
+      if (d1 <= d2) {
+        query_single_low_partition(index, k, child1, d1, heap);
+        query_single_low_partition(index, k, child2, d2, heap);
+      } else {
+        query_single_low_partition(index, k, child2, d2, heap);
+        query_single_low_partition(index, k, child1, d1, heap);
+      }
+    }
+  }
+
   size_t getLeafSize() { return leaf_size; }
   const Data3D &getNodeBounds() { return node_bounds; }
 
