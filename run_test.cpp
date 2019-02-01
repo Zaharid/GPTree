@@ -99,7 +99,7 @@ TEST_CASE("Test apply permutation", "[Permutation]"){
 TEST_CASE("Test tree invariants", "[KDTree]"){
     auto dt = Data2D(2,4);
 	auto y = std::vector<double>{1,3};
-    auto tree = KDTree(dt, y);
+    auto tree = KDTree(std::move(dt), std::move(y));
     REQUIRE(tree.nsamples() == 2);
     REQUIRE(tree.nfeatures() == 4);
 }
