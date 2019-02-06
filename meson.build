@@ -47,3 +47,7 @@ test('run_test',
     test_exe,
 	timeout: 60,
 )
+pytest = find_program('pytest')
+
+test('py_test_c_api', pytest, workdir: meson.source_root())
+

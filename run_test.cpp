@@ -122,7 +122,7 @@ TEST_CASE("Test tree construction", "[KDTree]") {
 
   REQUIRE(is_close(interp, val, 1e-1));
   save_tree(tree, "tree.cereal");
-  auto loaded_tree = load_tree("tree.cereal");
+  auto loaded_tree = std::get<KDTree>(load_tree("tree.cereal"));
   auto nis = loaded_tree.interpolate_single(pt);
   REQUIRE(interp == nis);
 }

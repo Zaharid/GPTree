@@ -14,11 +14,15 @@
 #include <numeric>
 #include <sstream>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "gsl/span"
 
 namespace ZKDTree {
+
+constexpr const std::uint32_t magic = 0x12ABED;
+constexpr const std::uint32_t tree_data_version = 1;
 
 using point_type = gsl::span<double>;
 
@@ -162,7 +166,7 @@ std::vector<double> apply_permutation(std::vector<double> const &in,
   return res;
 }
 
-template<typename Functor>
+template <typename Functor>
 void fill_uplo_packed(double *data, size_t n, Functor function) {
   auto k = 0;
   for (size_t i = 0; i < n; i++) {
@@ -536,30 +540,60 @@ struct KDTree {
   const Data3D &getNodeBounds() { return node_bounds; }
 
   template <class Archive> void serialize(Archive &ar) {
-    ar(
-	   leaf_size,
-	   data,
-	   node_bounds,
-	   responses,
-	   node_data,
+    // Note we do not save the data and responses on purpose:
+    // We save them separatedly as they are likely to remain
+    // stable much longer than the tree. If an upgrade of
+    // this code causes a change in the tree, we can try to
+    // recompute it.
+	//
+	// clang-format off
+    ar(leaf_size,
+       // data,
+       node_bounds,
+       // responses,
+       node_data,
 	   rbf_scale,
-       noise_scale,
-	   nneighbours
-	);
+	   noise_scale,
+	   nneighbours);
   }
 };
 
-KDTree load_tree(const char *filename) {
+std::variant<KDTree, std::string> load_tree(const char *filename) {
   auto res = KDTree();
   std::ifstream is(filename, std::ios::binary);
+  if (!is.good()) {
+    return std::string("Could not open archive: ") + filename;
+  }
   cereal::PortableBinaryInputArchive ar(is);
+  std::uint32_t magic_test;
+  ar(magic_test);
+  if (magic_test != magic) {
+    return std::string("Corrupted archive: ") + filename +
+           ". Magic numbers do not match";
+  }
+  std::uint32_t version_test;
+  ar(version_test);
+  if (version_test != tree_data_version) {
+    return std::string("Mismatch between versions.");
+  }
+  auto dt = Data2D{};
+  ar(dt);
+  std::vector<double> y;
+  ar(y);
   ar(res);
+  res.data = std::move(dt);
+  res.responses = std::move(y);
   return res;
 }
 
-void save_tree(KDTree &tree, const char *filename) {
+//Note the version parameter is mostly for testing
+void save_tree(KDTree &tree, const char *filename, std::uint32_t version=tree_data_version) {
   std::ofstream os(filename, std::ios::binary);
   cereal::PortableBinaryOutputArchive ar(os);
+  ar(magic);
+  ar(version);
+  ar(tree.data);
+  ar(tree.responses);
   ar(tree);
 }
 

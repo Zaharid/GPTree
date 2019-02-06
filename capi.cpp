@@ -1,9 +1,21 @@
 #include "capi.h"
 #include "tree.hpp"
+#include <string.h>
 
-zkdtree * zkdtree_load(const char * filename){
-	auto *t = new ZKDTree::KDTree(ZKDTree::load_tree(filename));
-	return reinterpret_cast<zkdtree*>(t);
+zkdtree *zkdtree_load(const char *filename, char **error) {
+  auto loaded = ZKDTree::load_tree(filename);
+  if (std::holds_alternative<ZKDTree::KDTree>(loaded)) {
+    auto *t = new ZKDTree::KDTree(std::move(std::get<ZKDTree::KDTree>(loaded)));
+    return reinterpret_cast<zkdtree *>(t);
+  } else {
+    auto error_str = std::get<std::string>(loaded);
+    auto size = sizeof(*error) * (error_str.size() + 1);
+    *error = (char *)malloc(size);
+    if (*error != nullptr) {
+      strcpy(*error, error_str.c_str());
+    }
+    return nullptr;
+  }
 }
 
 void zkdtree_delete(zkdtree * t){

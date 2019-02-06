@@ -7,7 +7,7 @@ typedef struct zkdtree_result zkdtree_result;
 #ifdef __cplusplus
 extern "C"{
 #endif
-zkdtree * zkdtree_load(const char * filename);
+zkdtree * zkdtree_load(const char * filename, char ** errout);
 
 void zkdtree_delete(zkdtree *);
 
