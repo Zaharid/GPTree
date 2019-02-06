@@ -1,12 +1,14 @@
 #include "tree.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <functional>
 #include <iostream>
 #include <memory>
-#include <vector>
-#include <algorithm>
 #include <random>
-#include <functional>
-#include <cmath>
+#include <vector>
+
+constexpr double pi = 3.141592653589793238463;
 
 
 #define CATCH_CONFIG_MAIN
@@ -50,38 +52,6 @@ TEST_CASE("Test 3d indexing", "[Data3D]"){
 	REQUIRE(dt(1,1,1)==10);
 }
 
-TEST_CASE("Test kernel matrix", "[GP]"){
-	auto dt = Data2D{2, 3, {1,0,0,
-		                    0,0,1}};
-	auto lower = rbf_lo_matrix(dt, 2);
-	std::cout << lower(0,0) << "\t";
-	std::cout << lower(0,1) << "\n";
-	std::cout << lower(1,0) << "\t";
-	std::cout << lower(1,1) << "\n";
-	REQUIRE(is_close(lower(0,0), 1.));
-	//REQUIRE(is_close(lower(0,1), 0));
-	REQUIRE(is_close(lower(1,1), 1.));
-	REQUIRE(is_close(lower(1,0), std::exp(-1./4.)));
-	add_noise(lower, 0.1);
-	std::cout << lower(0,0) << "\t";
-	std::cout << lower(0,1) << "\n";
-	std::cout << lower(1,0) << "\t";
-	std::cout << lower(1,1) << "\n";
-	REQUIRE(is_close(lower(0,0), 1. + 0.01));
-	auto chol = lapack_cholesky_factor(lower);
-	//TODO??
-	//REQUIRE(is_close(lower(0,0), chol(0,0)*chol(0,0) + chol(0,1)*chol(0,1)));
-	auto y = std::vector<double>{5,6};
-	auto sol = lapack_cholesky_solve(chol, y);
-	REQUIRE(is_close(lower(0,0)*sol[0] + lower(0,1)*sol[1], 5));
-	REQUIRE(is_close(lower(0,1)*sol[0] + lower(1,1)*sol[1], 6));
-
-	//auto tree = KDTree(dt, y, 2, 0.1);
-	auto training_pivots = compute_training_pivots(dt, y, 2., 0.1);
-	//Need the lambda because it doesn't fill the default arguments of is_close.
-	REQUIRE(std::equal(sol.begin(), sol.end(), training_pivots.begin(),
-				[](auto x, auto y){return is_close(x, y);}));
-}
 
 TEST_CASE("Test tuple", "[Tuple]"){
 	auto dis = std::vector<DistanceIndex>{{0.4, 1},{0.2,2}};
@@ -141,7 +111,7 @@ TEST_CASE("Test tree construction", "[KDTree]") {
   for (size_t i = 0; i < nsamples; i++) {
     y.push_back(f(dt.at(i)));
   }
-  KDTree tree{dt, y, 20, 1e-1, 1e-10};
+  KDTree tree{dt, y, 20, 1e-1};
   REQUIRE(tree.nlevels() == 9);
   std::cout << tree.print_tree();
   auto pt = std::vector<double>{10, 10, 25};
@@ -153,7 +123,6 @@ TEST_CASE("Test tree construction", "[KDTree]") {
   REQUIRE(is_close(interp, val, 1e-1));
   save_tree(tree, "tree.cereal");
   auto loaded_tree = load_tree("tree.cereal");
-  auto newinterp = loaded_tree.interpolate_single_bruteforce(pt);
   auto nis = loaded_tree.interpolate_single(pt);
   REQUIRE(interp == nis);
 }
@@ -170,7 +139,7 @@ TEST_CASE("Test interpolation", "[KDTree]"){
 	for(size_t i=0; i<nsamples; i++){
 		y.push_back(f(dt.at(i)));
 	}
-	KDTree tree {dt, y, 5, 0, 1e-7};
+	KDTree tree {dt, y, 5, 0};
     std::cout << tree.print_tree();
 	auto pt = std::vector<double>{25, 25, 25};
 	auto val = f(pt);
@@ -228,7 +197,7 @@ TEST_CASE("Test query", "[KDTree]"){
 	for(size_t i=0; i<nsamples; i++){
 		y.push_back(f(dt.at(i)));
 	}
-	KDTree tree {dt, y, 10, 1e-8, 1e-7};
+	KDTree tree {dt, y, 10, 1e-8};
 	auto pt = std::vector<double>{50., 50., 50.};
 	size_t nele = 50;
 	auto res = tree.query(pt, nele);
@@ -247,24 +216,5 @@ TEST_CASE("Test query", "[KDTree]"){
 		REQUIRE(v[i].rdistance == res[i].rdistance);
 		// This is not true because we moved around the internal data
 		//REQUIRE(v[i].index == res[i].index);
-	}
-
-	auto empty = tree.query_low_partition(0, 10);
-	REQUIRE(empty.empty());
-
-    size_t target_index = 50;
-	size_t k = 10;
-	auto lp = tree.query_low_partition(target_index, k);
-	std::sort_heap(lp.begin(), lp.end());
-	auto vl = std::vector<DistanceIndex>{};
-	const auto & internal_data = tree.data;
-	for(size_t i=0; i < target_index; i++){
-		vl.emplace_back(reduced_distance(internal_data, i, target_index), i);
-	}
-	std::nth_element(vl.begin(), vl.begin()+k, vl.end());
-	std::sort(vl.begin(), vl.begin() + k);
-	for(size_t i=0; i<k; i++){
-		REQUIRE(vl[i].rdistance == lp[i].rdistance);
-		REQUIRE(vl[i].index == lp[i].index);
 	}
 }
