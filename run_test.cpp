@@ -170,7 +170,7 @@ TEST_CASE("Test interpolation", "[KDTree]"){
 	for(size_t i=0; i<nsamples; i++){
 		y.push_back(f(dt.at(i)));
 	}
-	KDTree tree {dt, y, 5, 1e-3, 1e-7};
+	KDTree tree {dt, y, 5, 0, 1e-7};
     std::cout << tree.print_tree();
 	auto pt = std::vector<double>{25, 25, 25};
 	auto val = f(pt);
@@ -179,6 +179,19 @@ TEST_CASE("Test interpolation", "[KDTree]"){
 	std::cout << interp << "\n";
 
 	REQUIRE(is_close(interp, val, 1e-1));
+
+	auto obj = tree.interpolate_single_result(pt);
+	REQUIRE(obj.central_value == interp);
+	REQUIRE(obj.interpolable);
+
+	pt = {1000, 1000, 1000};
+	obj = tree.interpolate_single_result(pt);
+	REQUIRE(is_close(obj.variance, 1));
+	REQUIRE(!obj.interpolable);
+
+	auto pt2 = dt.at(0);
+	obj = tree.interpolate_single_result(pt2);
+	REQUIRE(is_close(obj.variance, 0));
 
 }
 

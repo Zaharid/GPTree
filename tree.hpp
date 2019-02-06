@@ -175,6 +175,18 @@ void fill_uplo_packed(double *data, size_t n, Functor function) {
   }
 }
 
+struct interpolation_storage {
+  std::vector<double> data;
+  double *bstart;
+  double *wstart;
+  double *ystart;
+  double *covmatstart;
+  interpolation_storage(size_t nneighbours)
+      : data(3 * nneighbours + (nneighbours + nneighbours * nneighbours) / 2),
+        bstart(&data[0]), wstart(&data[nneighbours]),
+        ystart(&data[2 * nneighbours]), covmatstart(&data[3 * nneighbours]) {}
+};
+
 double reduced_distance(Data2D const &data, size_t i, size_t j) {
   double s = 0;
   for (size_t k = 0; k < data.nfeatures; k++) {
@@ -297,6 +309,13 @@ std::vector<double> compute_training_pivots(Data2D const &data,
   return res;
 }
 
+//Could we represent interpolable in the sign of variance?
+struct interpolation_result{
+	double central_value;
+	double variance;
+	bool interpolable;
+};
+
 struct KDTree {
   //
   // NOTE: lead_size must go first because it is needed to initialize
@@ -310,7 +329,6 @@ struct KDTree {
   // These are the values obtained by fitting the gp.
   //std::vector<double> training_pivots;
   std::vector<double> responses;
-  std::vector<double> internal_storage;
   std::vector<NodeData> node_data;
   // Kernel and noise parameters. Maybe abstract away.
   double rbf_scale;
@@ -504,68 +522,55 @@ struct KDTree {
 
   double rbf(double rdist) { return basic_rbf(rdist, rbf_scale); }
 
-  double interpolate_single(const point_type &pt) {
-	//TODO: Move this out of here and make constant (caveat, make work with cereal)
+  interpolation_storage& compute_data_for_point_interpolation(const point_type & pt){
 	auto neigh = query(pt, nneighbours);
-	//Note: Do not casually move around. Note integer division.
-	internal_storage.resize(2*nneighbours + (nneighbours*nneighbours + nneighbours)/2);
-	auto  bstart = &internal_storage[0];
-	auto  ystart = &internal_storage[nneighbours];
-	auto  covmatstart = &internal_storage[2*nneighbours];
-	for(size_t i=0; i<nneighbours; i++){
-		internal_storage[i] = rbf(neigh[i].rdistance);
-		auto &index = neigh[i].index;
-		internal_storage[nneighbours+i] = responses[index];
-	}
+	return compute_data_for_point_interpolation(neigh);;
+  }
+
+  interpolation_storage& compute_data_for_point_interpolation(std::vector<DistanceIndex> const & neigh){
+	thread_local auto internal_storage = interpolation_storage(nneighbours);
+	auto  bstart = internal_storage.bstart;
+	auto  ystart = internal_storage.ystart;
+	auto wstart = internal_storage.wstart;
+	auto  covmatstart = internal_storage.covmatstart;
+	std::transform(std::begin(neigh), std::end(neigh), bstart, [&](auto &n){return rbf(n.rdistance);});
+	//We need this copy because one of the two sets of weights is going to be mutated to store the solution
+	//of the system, and we need it to estimate the error later.
+	std::copy(bstart, bstart+nneighbours, wstart);
 	//Note: we could have some approximate nearest neighbour and cache this part
+	std::transform(std::begin(neigh), std::end(neigh), ystart, [&](auto &n){return responses[n.index];});
 	fill_uplo_packed(covmatstart, nneighbours,
         [&](size_t i, size_t j)
 		{return rbf(reduced_distance(data, neigh[i].index, neigh[j].index)) + int(i == j) * noise_scale * noise_scale;});
-	/*
-	std::cout << "---\n";
-	for(size_t i = 0; i < nneighbours; i++){
-		auto pt = data.at(neigh[i].index);
-		std::cout << "point(";
-		for (auto x : pt){
-			std::cout << x << ", ";
-		}
-		std::cout << ") response: " << *(ystart+i);
-	    std::cout << ", distance:" << neigh[i].rdistance;
-		std::cout << " k: " << internal_storage[i] << "\n";
-	}
-
-	size_t k = 0;
-	for(size_t i=0; i<nneighbours; i++){
-		for(size_t j=0; j<i+1; j++){
-			std::cout << *(covmatstart+k) << "\t";
-			k++;
-
-		}
-		std::cout << "\n";
-
-	}
-	std::cout << "---\n";;
-	*/
 	char U = 'U';
 	int one = 1;
 	int intneighbours = nneighbours;
 	int info;
 	dppsv_(&U, intneighbours, one, covmatstart, bstart, intneighbours, &info);
 	assert(info==0);
-	/*
-	for(size_t i =0; i<nneighbours; i++){
-		std::cout<< "weight: " << *(bstart+i) << "\n";
+	return internal_storage;
+  }
 
-	}*/
-	return std::inner_product(bstart, bstart+nneighbours, ystart, 0.);
+  double get_central_prediction(interpolation_storage & store){
+	return std::inner_product(store.bstart, store.bstart+nneighbours, store.ystart, 0.);
+  }
 
-    //return interpolate_single_bruteforce(pt);
-    /*
-	double wsofar = 0;
-	auto res = accumulate_weight(0, pt, wsofar);
-	// assert(std::all_of(training_pivots.begin(), training_pivots.end(), []
-	// (auto x) {return std::isnan(x);}));
-	return res;*/
+
+  double get_variance(interpolation_storage & store){
+	  return rbf(0) - std::inner_product(store.bstart, store.bstart+nneighbours, store.wstart, 0.);
+  }
+
+  double interpolate_single(const point_type &pt) {
+	auto store = compute_data_for_point_interpolation(pt);
+	return get_central_prediction(store);
+  }
+
+  struct interpolation_result interpolate_single_result(const point_type &pt){
+	  auto store = compute_data_for_point_interpolation(pt);
+	  auto central = get_central_prediction(store);
+	  auto variance = get_variance(store);
+	  bool interpolable = (min_rdist(0, pt) == 0);
+	  return {central, variance, interpolable};
   }
 
   /*
@@ -815,7 +820,7 @@ struct KDTree {
 
       //  });
     }
-  }
+  }*/
 
   size_t getLeafSize() { return leaf_size; }
   const Data3D &getNodeBounds() { return node_bounds; }
