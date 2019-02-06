@@ -164,6 +164,17 @@ std::vector<double> apply_permutation(std::vector<double> const &in,
   return res;
 }
 
+template<typename Functor>
+void fill_uplo_packed(double *data, size_t n, Functor function) {
+  auto k = 0;
+  for (size_t i = 0; i < n; i++) {
+    for (size_t j = 0; j < i + 1; j++) {
+      data[k] = function(j, i);
+      k++;
+    }
+  }
+}
+
 double reduced_distance(Data2D const &data, size_t i, size_t j) {
   double s = 0;
   for (size_t k = 0; k < data.nfeatures; k++) {
@@ -224,6 +235,9 @@ void add_noise(Data2D &data, double noise_scale) {
 
 extern "C" int dpotrf_(const char *UPLO, const int &N, double *A,
                        const int &LDA, int &info);
+
+extern "C" void dppsv_(char *uplo, int &n, int &nrhs, double *a, double *b,
+                       int &ldb, int *info);
 
 extern "C" int dpotrs_(const char *UPLO, const int &N, const int &NRHS,
                        const double *A, const int &LDA, double *B,
@@ -294,12 +308,16 @@ struct KDTree {
   // The internal node bounds.
   Data3D node_bounds;
   // These are the values obtained by fitting the gp.
-  std::vector<double> training_pivots;
+  //std::vector<double> training_pivots;
+  std::vector<double> responses;
+  std::vector<double> internal_storage;
   std::vector<NodeData> node_data;
   // Kernel and noise parameters. Maybe abstract away.
   double rbf_scale;
   double noise_scale;
+  // TODO: Remove this?
   double search_threshold;
+  size_t nneighbours = 20;
   size_t nsamples() { return data.nsamples; }
   size_t nfeatures() { return data.nfeatures; }
   size_t nlevels() {
@@ -341,8 +359,12 @@ struct KDTree {
 
     // TODO: Take data by reference and avoid copying.
     data = apply_permutation(data, indexes);
-    training_pivots = apply_permutation(training_pivots, indexes);
-    ;
+    // Train
+    responses = apply_permutation(y, indexes);
+	assert(responses.size() == nsamples());
+    // training_pivots =
+    //    compute_training_pivots(data, yperm, rbf_scale, noise_scale);
+    //compute_training_pivots2(yperm);
   }
 
   void recursive_build(std::vector<size_t> &indexes, size_t inode, size_t start,
@@ -396,19 +418,19 @@ struct KDTree {
 
   void init_node(std::vector<size_t> &indexes, size_t inode, size_t idx_start,
                  size_t idx_end) {
-    double training_sum = 0;
-    double min_pivot = inf;
-    double max_pivot = neg_inf;
+    // double training_sum = 0;
+    // double min_pivot = inf;
+    // double max_pivot = neg_inf;
     for (auto i = idx_start; i < idx_end; i++) {
       auto data_index = indexes[i];
-      auto pivot = training_pivots[data_index];
-      training_sum += pivot;
-      if (pivot > max_pivot) {
-        max_pivot = pivot;
-      }
-      if (pivot < min_pivot) {
-        min_pivot = pivot;
-      }
+      // auto pivot = training_pivots[data_index];
+      // training_sum += pivot;
+      // if (pivot > max_pivot) {
+      //  max_pivot = pivot;
+      //}
+      // if (pivot < min_pivot) {
+      //  min_pivot = pivot;
+      //}
       for (size_t j = 0; j < nfeatures(); j++) {
         auto data_val = data.at(data_index, j);
         auto &lowbound = node_bounds.at(0, inode, j);
@@ -424,9 +446,9 @@ struct KDTree {
     }
     rad = std::sqrt(rad);
     node_data[inode].radius = rad;
-    node_data[inode].training_sum = training_sum;
-    node_data[inode].training_min = min_pivot;
-    node_data[inode].training_max = max_pivot;
+    // node_data[inode].training_sum = training_sum;
+    // node_data[inode].training_min = min_pivot;
+    // node_data[inode].training_max = max_pivot;
     node_data[inode].start = idx_start;
     node_data[inode].end = idx_end;
   }
@@ -483,13 +505,70 @@ struct KDTree {
   double rbf(double rdist) { return basic_rbf(rdist, rbf_scale); }
 
   double interpolate_single(const point_type &pt) {
-    double wsofar = 0;
-    auto res = accumulate_weight(0, pt, wsofar);
-    // assert(std::all_of(training_pivots.begin(), training_pivots.end(), []
-    // (auto x) {return std::isnan(x);}));
-    return res;
+	//TODO: Move this out of here and make constant (caveat, make work with cereal)
+	auto neigh = query(pt, nneighbours);
+	//Note: Do not casually move around. Note integer division.
+	internal_storage.resize(2*nneighbours + (nneighbours*nneighbours + nneighbours)/2);
+	auto  bstart = &internal_storage[0];
+	auto  ystart = &internal_storage[nneighbours];
+	auto  covmatstart = &internal_storage[2*nneighbours];
+	for(size_t i=0; i<nneighbours; i++){
+		internal_storage[i] = rbf(neigh[i].rdistance);
+		auto &index = neigh[i].index;
+		internal_storage[nneighbours+i] = responses[index];
+	}
+	//Note: we could have some approximate nearest neighbour and cache this part
+	fill_uplo_packed(covmatstart, nneighbours,
+        [&](size_t i, size_t j)
+		{return rbf(reduced_distance(data, neigh[i].index, neigh[j].index)) + int(i == j) * noise_scale * noise_scale;});
+	/*
+	std::cout << "---\n";
+	for(size_t i = 0; i < nneighbours; i++){
+		auto pt = data.at(neigh[i].index);
+		std::cout << "point(";
+		for (auto x : pt){
+			std::cout << x << ", ";
+		}
+		std::cout << ") response: " << *(ystart+i);
+	    std::cout << ", distance:" << neigh[i].rdistance;
+		std::cout << " k: " << internal_storage[i] << "\n";
+	}
+
+	size_t k = 0;
+	for(size_t i=0; i<nneighbours; i++){
+		for(size_t j=0; j<i+1; j++){
+			std::cout << *(covmatstart+k) << "\t";
+			k++;
+
+		}
+		std::cout << "\n";
+
+	}
+	std::cout << "---\n";;
+	*/
+	char U = 'U';
+	int one = 1;
+	int intneighbours = nneighbours;
+	int info;
+	dppsv_(&U, intneighbours, one, covmatstart, bstart, intneighbours, &info);
+	assert(info==0);
+	/*
+	for(size_t i =0; i<nneighbours; i++){
+		std::cout<< "weight: " << *(bstart+i) << "\n";
+
+	}*/
+	return std::inner_product(bstart, bstart+nneighbours, ystart, 0.);
+
+    //return interpolate_single_bruteforce(pt);
+    /*
+	double wsofar = 0;
+	auto res = accumulate_weight(0, pt, wsofar);
+	// assert(std::all_of(training_pivots.begin(), training_pivots.end(), []
+	// (auto x) {return std::isnan(x);}));
+	return res;*/
   }
 
+  /*
   double accumulate_weight(size_t inode, const point_type &pt, double &wsofar) {
     auto wmin = rbf(max_rdist(inode, pt));
     auto wmax = rbf(min_rdist(inode, pt));
@@ -562,12 +641,16 @@ struct KDTree {
     }
   }
 
+  */
   double interpolate_single_bruteforce(const point_type &pt) {
+	  return interpolate_single(pt);
+	  /*
     double res = 0;
     for (size_t i = 0; i < nsamples(); i++) {
       res += rbf(reduced_distance(data, i, pt)) * training_pivots[i];
     }
     return res;
+	*/
   }
 
   std::vector<DistanceIndex> query(const point_type &pt, size_t k) {
@@ -646,13 +729,110 @@ struct KDTree {
       }
     }
   }
+  /*
+  void compute_training_pivots2(std::vector<double> const &y) {
+    auto acline = Data2D(3, nneighbours);
+    // Don't even try to think about unsigned arithmetic.
+    int s = nneighbours;
+    // We only care about storing the triangular part
+    // TODO: use packed storage
+    // const auto nsymmat = (s * s + s) / 2;
+    auto c = std::vector<double>(s * s, 0);
+    double d = rbf(0) + noise_scale * noise_scale;
+    // We want this here so the vector is not mutated during
+    // the iteration, so it cn be computed concurrently.
+    training_pivots.resize(nsamples());
+    training_pivots.front() = y[0] / d;
+    // Also it is cumbersome to get an index...
+    // std::for_each(
+    //    training_pivots.begin() + 1, training_pivots.end(), [&](double *pivot)
+    //    {
+    //      size_t index = pivot - training_pivots.begin();
+    for (size_t index = 1; index < nsamples(); ++index) {
+      auto neighbours = query_low_partition(index, nneighbours);
+      auto system_size = neighbours.size();
+      for (size_t j = 0; j < system_size; j++) {
+        const auto &nei1 = neighbours[j];
+        // Build C[N[index][j], index]
+
+        // We need to copies of this because the dposv_ call
+        // below mutates the input to be the solution.
+        acline.at(0, j) = acline.at(1, j) = rbf(nei1.rdistance);
+        acline.at(2, j) = y[nei1.index];
+
+        // Build C[N[index][j], N[index][k]
+        // Compute kernel
+        // TODO: Use packed storage and dppsv instead.
+        for (size_t k = 0; k < j + 1; k++) {
+          const auto &nei2 = neighbours[k];
+          c[j * system_size + k] =
+              rbf(reduced_distance(data, nei1.index, nei2.index));
+        }
+        // Add noise
+        c[j * system_size + j] += noise_scale * noise_scale;
+      }
+      // Solve symmetric
+      int one = 1;
+      int info;
+      int int_size = system_size;
+      char l = 'L';
+      // This evaluates the first row of (4) from arxiv:1702.00434
+      // We have acline[0,:] -> A[index, N[index]] (note that contrary to the
+      // paper we 0-index): and acline[1,:] -> C[index, N[index]]
+      dposv_(&l, &int_size, &one, c.data(), &int_size, acline.data.data(),
+             &int_size, &info);
+      assert(info == 0);
+
+      // This is the dot product dot(A[index, N[index]], C[index, N[index]])
+      // Note there should be std::transform_reduce
+
+      // I think this works, but it is really clearer to write to for loop
+      // instead. Maybe should write iterators for Data2D, but can't be
+      // bothered.
+      /[*]
+  using it = decltype(acline.data)::iterator);
+  auto dot =
+      std::inner_product(it(acline.at(0, 0)), it(acline.at(0, system_size)),
+                         it(acline.at(1, 0)), 0);
+      [*]/
+
+      double dot = 0.;
+      for (size_t i = 0; i < system_size; i++) {
+        dot += acline.at(0, i) * acline.at(1, i);
+      }
+
+      // This is the second row of (4)
+      auto d = rbf(0) + noise_scale * noise_scale - dot;
+
+      double proj_dot = 0.;
+      for (size_t i = 0; i < system_size; i++) {
+        proj_dot += acline.at(0, i) * acline.at(2, i);
+      }
+
+      // aut proj_dot = std::inner_product(*acline.ar-);
+      training_pivots[index] = (y[index] - proj_dot) / d;
+      c.assign(c.size(), 0);
+
+      //  });
+    }
+  }
 
   size_t getLeafSize() { return leaf_size; }
   const Data3D &getNodeBounds() { return node_bounds; }
 
   template <class Archive> void serialize(Archive &ar) {
-    ar(leaf_size, data, node_bounds, training_pivots, node_data, rbf_scale,
-       noise_scale, search_threshold);
+    ar(
+	   leaf_size,
+	   data,
+	   node_bounds,
+	   responses,
+	   //training_pivots,
+	   node_data,
+	   rbf_scale,
+       noise_scale,
+	   //search_threshold,
+	   nneighbours
+	);
   }
 };
 

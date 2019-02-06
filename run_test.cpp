@@ -141,29 +141,26 @@ TEST_CASE("Test tree construction", "[KDTree]") {
   for (size_t i = 0; i < nsamples; i++) {
     y.push_back(f(dt.at(i)));
   }
-  KDTree tree{dt, y, 10, 1e-10, 1e-10};
+  KDTree tree{dt, y, 20, 1e-1, 1e-10};
   REQUIRE(tree.nlevels() == 9);
   std::cout << tree.print_tree();
   auto pt = std::vector<double>{10, 10, 25};
   auto val = f(pt);
-  auto interp2 = tree.interpolate_single_bruteforce(pt);
   auto interp = tree.interpolate_single(pt);
   std::cout << val << "\n";
   std::cout << interp << "\n";
-  std::cout << interp2 << "\n";
 
   REQUIRE(is_close(interp, val, 1e-1));
   save_tree(tree, "tree.cereal");
   auto loaded_tree = load_tree("tree.cereal");
   auto newinterp = loaded_tree.interpolate_single_bruteforce(pt);
-  REQUIRE(interp2 == newinterp);
   auto nis = loaded_tree.interpolate_single(pt);
   REQUIRE(interp == nis);
 }
 TEST_CASE("Test interpolation", "[KDTree]"){
 	std::mt19937 g(44);
 	std::uniform_real_distribution<double> dist {0,100};
-    size_t nsamples = 1000;
+    size_t nsamples = 100000;
 	auto gen = [&dist, &g](){return dist(g);};
     auto points = std::vector<double>(nsamples*3);
 	std::generate(std::begin(points), std::end(points), gen);
@@ -173,15 +170,13 @@ TEST_CASE("Test interpolation", "[KDTree]"){
 	for(size_t i=0; i<nsamples; i++){
 		y.push_back(f(dt.at(i)));
 	}
-	KDTree tree {dt, y, 10, 1e-8, 1e-7};
+	KDTree tree {dt, y, 5, 1e-3, 1e-7};
     std::cout << tree.print_tree();
 	auto pt = std::vector<double>{25, 25, 25};
 	auto val = f(pt);
-	auto interp2 = tree.interpolate_single_bruteforce(pt);
 	auto interp = tree.interpolate_single(pt);
 	std::cout << val << "\n";
 	std::cout << interp << "\n";
-	std::cout << interp2 << "\n";
 
 	REQUIRE(is_close(interp, val, 1e-1));
 
