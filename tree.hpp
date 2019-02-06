@@ -230,17 +230,14 @@ void add_noise(Data2D &data, double noise_scale) {
   }
 }
 
-
 extern "C" void dppsv_(char *uplo, int &n, int &nrhs, double *a, double *b,
                        int &ldb, int *info);
 
-
-
-//Could we represent interpolable in the sign of variance?
-struct interpolation_result{
-	double central_value;
-	double variance;
-	bool interpolable;
+// Could we represent interpolable in the sign of variance?
+struct interpolation_result {
+  double central_value;
+  double variance;
+  bool interpolable;
 };
 
 struct KDTree {
@@ -254,7 +251,7 @@ struct KDTree {
   // The internal node bounds.
   Data3D node_bounds;
   // These are the values obtained by fitting the gp.
-  //std::vector<double> training_pivots;
+  // std::vector<double> training_pivots;
   std::vector<double> responses;
   std::vector<NodeData> node_data;
   // Kernel and noise parameters. Maybe abstract away.
@@ -278,8 +275,7 @@ struct KDTree {
   KDTree() {}
 
   KDTree(Data2D datain, std::vector<double> const &y, double rbf_scale = 0.1,
-         double noise_scale = 1e-7,
-         size_t leaf_size = default_leaf_size)
+         double noise_scale = 1e-7, size_t leaf_size = default_leaf_size)
       : leaf_size(leaf_size), data(std::move(datain)),
         node_bounds(2, nnodes(), datain.nfeatures), rbf_scale(rbf_scale),
         noise_scale(noise_scale) {
@@ -304,10 +300,10 @@ struct KDTree {
     data = apply_permutation(data, indexes);
     // Train
     responses = apply_permutation(y, indexes);
-	assert(responses.size() == nsamples());
+    assert(responses.size() == nsamples());
     // training_pivots =
     //    compute_training_pivots(data, yperm, rbf_scale, noise_scale);
-    //compute_training_pivots2(yperm);
+    // compute_training_pivots2(yperm);
   }
 
   void recursive_build(std::vector<size_t> &indexes, size_t inode, size_t start,
@@ -447,57 +443,67 @@ struct KDTree {
 
   double rbf(double rdist) { return basic_rbf(rdist, rbf_scale); }
 
-  interpolation_storage& compute_data_for_point_interpolation(const point_type & pt){
-	auto neigh = query(pt, nneighbours);
-	return compute_data_for_point_interpolation(neigh);;
+  interpolation_storage &
+  compute_data_for_point_interpolation(const point_type &pt) {
+    auto neigh = query(pt, nneighbours);
+    return compute_data_for_point_interpolation(neigh);
+    ;
   }
 
-  interpolation_storage& compute_data_for_point_interpolation(std::vector<DistanceIndex> const & neigh){
-	thread_local auto internal_storage = interpolation_storage(nneighbours);
-	auto  bstart = internal_storage.bstart;
-	auto  ystart = internal_storage.ystart;
-	auto wstart = internal_storage.wstart;
-	auto  covmatstart = internal_storage.covmatstart;
-	std::transform(std::begin(neigh), std::end(neigh), bstart, [&](auto &n){return rbf(n.rdistance);});
-	//We need this copy because one of the two sets of weights is going to be mutated to store the solution
-	//of the system, and we need it to estimate the error later.
-	std::copy(bstart, bstart+nneighbours, wstart);
-	//Note: we could have some approximate nearest neighbour and cache this part
-	std::transform(std::begin(neigh), std::end(neigh), ystart, [&](auto &n){return responses[n.index];});
-	fill_uplo_packed(covmatstart, nneighbours,
-        [&](size_t i, size_t j)
-		{return rbf(reduced_distance(data, neigh[i].index, neigh[j].index)) + int(i == j) * noise_scale * noise_scale;});
-	char U = 'U';
-	int one = 1;
-	int intneighbours = nneighbours;
-	int info;
-	dppsv_(&U, intneighbours, one, covmatstart, bstart, intneighbours, &info);
-	assert(info==0);
-	return internal_storage;
+  interpolation_storage &compute_data_for_point_interpolation(
+      std::vector<DistanceIndex> const &neigh) {
+    thread_local auto internal_storage = interpolation_storage(nneighbours);
+    auto bstart = internal_storage.bstart;
+    auto ystart = internal_storage.ystart;
+    auto wstart = internal_storage.wstart;
+    auto covmatstart = internal_storage.covmatstart;
+    std::transform(std::begin(neigh), std::end(neigh), bstart,
+                   [&](auto &n) { return rbf(n.rdistance); });
+    // We need this copy because one of the two sets of weights is going to be
+    // mutated to store the solution of the system, and we need it to estimate
+    // the error later.
+    std::copy(bstart, bstart + nneighbours, wstart);
+    // Note: we could have some approximate nearest neighbour and cache this
+    // part
+    std::transform(std::begin(neigh), std::end(neigh), ystart,
+                   [&](auto &n) { return responses[n.index]; });
+    fill_uplo_packed(covmatstart, nneighbours, [&](size_t i, size_t j) {
+      return rbf(reduced_distance(data, neigh[i].index, neigh[j].index)) +
+             int(i == j) * noise_scale * noise_scale;
+    });
+    char U = 'U';
+    int one = 1;
+    int intneighbours = nneighbours;
+    int info;
+    dppsv_(&U, intneighbours, one, covmatstart, bstart, intneighbours, &info);
+    assert(info == 0);
+    return internal_storage;
   }
 
-  double get_central_prediction(interpolation_storage & store){
-	return std::inner_product(store.bstart, store.bstart+nneighbours, store.ystart, 0.);
+  double get_central_prediction(interpolation_storage &store) {
+    return std::inner_product(store.bstart, store.bstart + nneighbours,
+                              store.ystart, 0.);
   }
 
-
-  double get_variance(interpolation_storage & store){
-	  return rbf(0) - std::inner_product(store.bstart, store.bstart+nneighbours, store.wstart, 0.);
+  double get_variance(interpolation_storage &store) {
+    return rbf(0) - std::inner_product(store.bstart, store.bstart + nneighbours,
+                                       store.wstart, 0.);
   }
 
   double interpolate_single(const point_type &pt) {
-	auto store = compute_data_for_point_interpolation(pt);
-	return get_central_prediction(store);
+    // TODO: Move this out of here and make constant (caveat, make work with
+    // cereal)
+    auto store = compute_data_for_point_interpolation(pt);
+    return get_central_prediction(store);
   }
 
-  struct interpolation_result interpolate_single_result(const point_type &pt){
-	  auto store = compute_data_for_point_interpolation(pt);
-	  auto central = get_central_prediction(store);
-	  auto variance = get_variance(store);
-	  bool interpolable = (min_rdist(0, pt) == 0);
-	  return {central, variance, interpolable};
+  struct interpolation_result interpolate_single_result(const point_type &pt) {
+    auto store = compute_data_for_point_interpolation(pt);
+    auto central = get_central_prediction(store);
+    auto variance = get_variance(store);
+    bool interpolable = (min_rdist(0, pt) == 0);
+    return {central, variance, interpolable};
   }
-
 
   std::vector<DistanceIndex> query(const point_type &pt, size_t k) {
     auto heap = std::vector<DistanceIndex>{};
