@@ -58,7 +58,7 @@ pkg = import('pkgconfig')
 pkg.generate(
 	libraries: clib,
 	subdirs: ['.'],
-	install_dir: 'lib',
+	install_dir: 'lib/pkgconfig',
 	name: 'libzkdtree',
 	filebase: 'zkdtree',
 	description: 'A grid interpolation library',
