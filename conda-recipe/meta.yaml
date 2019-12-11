@@ -8,23 +8,28 @@ source:
 requirements:
     build:
         - {{ compiler("cxx") }}
+        - pkg-config
         - meson
         - ninja
-        - openblas
+        - cython
+        - numpy
     host:
-        - openblas
-        - python #it refuses to run the test without this
-        - pytest
+        - lapack
+        - python
+        - numpy
     run:
-        - openblas
+        - python
+        - numpy
+        - lapack
 
 test:
     requires:
         - {{ compiler("cxx") }}
+        - pkg-config
         - meson
         - ninja
-        - pytest
-        - cffi
+        - cython
+
     source_files:
         - "*"
 

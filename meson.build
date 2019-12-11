@@ -83,8 +83,6 @@ numpy_includes = run_command(
 	check:true
 ).stdout().strip()
 
-message(numpy_includes)
-
 
 pymod = python_inst.extension_module('pyzkdtree',
   pyx_c,
