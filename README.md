@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/218984364.svg)](https://zenodo.org/badge/latestdoi/218984364)
+
 # `zkdtree`
 
 
