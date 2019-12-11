@@ -1,4 +1,4 @@
-project('kdtree', ['c', 'cpp'], default_options: ['cpp_std=c++17'])
+project('kdtree', ['c', 'cpp'], default_options: ['cpp_std=c++17'], version: '0.1.1')
 
 sources = ['tree.hpp', ]
 
